@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://ubaldos00-ship-it.github.io/sitemap.xml
