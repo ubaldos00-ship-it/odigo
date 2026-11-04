@@ -1,5 +1,9 @@
 <!doctype html>
-<!-- 어디고 odigo v1.2 (2026-11-05) 하단 접속 카운터 추가(텐아르 방식: GA4 Apps Script 서버값 — 실시간·오늘·누적·조회수). GAS_URL 비어 있으면 '–' 표시 -->
+<!-- 어디고 odigo v1.6 (2026-11-05) PNG 아이콘을 img/ 폴더로 정리, 경로 수정 + ?v=3. favicon.ico·manifest는 맨 위 유지 -->
+<!-- (이전) 어디고 odigo v1.5 (2026-11-05) 하단 카운터를 어디고 GA4 Apps Script(/exec)에 연결 — 실시간·오늘·누적·조회수 표시 -->
+<!-- (이전) 어디고 odigo v1.4 (2026-11-05) 즐겨찾기 제목을 「어디고」로 변경(<title>) -->
+<!-- (이전) 어디고 odigo v1.3 (2026-11-05) 즐겨찾기·홈화면 아이콘이 두당으로 나오던 문제 수정 — 어디고 아이콘(favicon.ico·16/32·apple-touch-icon·192/512)+manifest, ?v=2 캐시 무효화, 앱 이름 어디고 -->
+<!-- (이전) 어디고 odigo v1.2 (2026-11-05) 하단 접속 카운터 추가(텐아르 방식: GA4 Apps Script 서버값 — 실시간·오늘·누적·조회수). GAS_URL 비어 있으면 '–' 표시 -->
 <!-- (이전) 어디고 odigo v1.1 (2026-11-05) Google Analytics 추가 -->
 <html lang="ko">
 <head>
@@ -14,7 +18,18 @@
 
   gtag('config', 'G-6GZCBFEGQ0');
 </script>
-<title>어디고 EDIGO | 준비 중</title>
+<title>어디고</title>
+<link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png?v=3">
+<link rel="apple-touch-icon-precomposed" href="img/apple-touch-icon-precomposed.png?v=3">
+<link rel="icon" href="favicon.ico?v=3" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png?v=3">
+<link rel="icon" type="image/png" sizes="16x16" href="img/favicon-16.png?v=3">
+<link rel="icon" type="image/png" sizes="192x192" href="img/odigo-192.png?v=3">
+<link rel="shortcut icon" href="favicon.ico?v=3">
+<link rel="manifest" href="odigo.webmanifest">
+<meta name="apple-mobile-web-app-title" content="어디고">
+<meta name="application-name" content="어디고">
+<meta name="theme-color" content="#f07a22">
 <style>
 :root { --color-primary: #f07a22; --color-text-soft: #6b7a75; }
 body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f1f6f4; color: #19352e; font-family: system-ui, sans-serif; }
@@ -57,7 +72,7 @@ footer.info .meta { font-variant-numeric: tabular-nums; color: #7a8079; }
 <script>
   /* ====== 실시간 접속 + 오늘 방문자 + 누적 방문자 (GA4 Apps Script 서버값) ====== */
   (function () {
-    var GAS_URL = '';   // ← Apps Script 웹 앱 배포 후 받은 .../exec 주소를 여기에 붙여넣기
+    var GAS_URL = 'https://script.google.com/macros/s/AKfycby132T2PIJQ8VPKhQLzQZaxEUBwC6c-7N-h60PGsx3MpU0O58qD7Lg5OJqhvQjD4SJoww/exec';   // 어디고 카운터(GA4 Apps Script)
 
     var rtEl  = document.getElementById('realtimeCount');
     var tdEl  = document.getElementById('todayCount');
