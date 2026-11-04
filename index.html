@@ -1,14 +1,36 @@
 <!doctype html>
+<!-- 어디고 odigo v1.2 (2026-11-05) 하단 접속 카운터 추가(텐아르 방식: GA4 Apps Script 서버값 — 실시간·오늘·누적·조회수). GAS_URL 비어 있으면 '–' 표시 -->
+<!-- (이전) 어디고 odigo v1.1 (2026-11-05) Google Analytics 추가 -->
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-6GZCBFEGQ0"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-6GZCBFEGQ0');
+</script>
 <title>어디고 EDIGO | 준비 중</title>
 <style>
-body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f1f6f4; color: #19352e; font-family: system-ui, sans-serif; }
-main { margin: 24px; padding: 40px 32px; border-radius: 20px; background: white; text-align: center; }
+:root { --color-primary: #f07a22; --color-text-soft: #6b7a75; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f1f6f4; color: #19352e; font-family: system-ui, sans-serif; }
+main { margin: 24px 16px 8px; padding: 40px 32px; border-radius: 20px; background: white; text-align: center; }
 h1 { margin: 0 0 16px; }
 p { margin: 0; line-height: 1.7; }
+footer.info {
+  margin-top: 8px;
+  padding: 14px 16px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--color-text-soft);
+  line-height: 1.7;
+}
+footer.info .brand-line { font-size: 13px; font-weight: 700; color: var(--color-primary); margin: 6px 0 4px; }
+footer.info .meta { font-variant-numeric: tabular-nums; color: #7a8079; }
 </style>
 </head>
 <body>
@@ -16,5 +38,59 @@ p { margin: 0; line-height: 1.7; }
 <h1>어디고 EDIGO</h1>
 <p>서비스를 준비 중입니다.<br>조금만 기다려 주세요.</p>
 </main>
+
+<!-- 푸터 -->
+<footer class="info">
+  <div class="brand-line">위치 현장조사지원 · 어디고 v1.0</div>
+  <div class="meta" style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;">
+    실시간 <strong id="realtimeCount">…</strong>명
+    &nbsp;·&nbsp;
+    오늘 <strong id="todayCount">…</strong>명
+    &nbsp;·&nbsp;
+    누적 <strong id="totalCount">…</strong>명
+    &nbsp;·&nbsp;
+    조회수 <strong id="pageviewCount">…</strong>회
+  </div>
+  <div class="meta" style="margin-top:4px;">최초 빌드 2026.11.5 · by <strong>Mr. Hyun</strong></div>
+</footer>
+
+<script>
+  /* ====== 실시간 접속 + 오늘 방문자 + 누적 방문자 (GA4 Apps Script 서버값) ====== */
+  (function () {
+    var GAS_URL = '';   // ← Apps Script 웹 앱 배포 후 받은 .../exec 주소를 여기에 붙여넣기
+
+    var rtEl  = document.getElementById('realtimeCount');
+    var tdEl  = document.getElementById('todayCount');
+    var totEl = document.getElementById('totalCount');
+    var pvEl  = document.getElementById('pageviewCount');
+
+    /* 오늘 = max(서버 오늘, 실시간, 이 기기 하한 1) — 서버 '오늘'이 집계 지연으로 0이어도 실시간보다 작아지지 않게 */
+    var localToday = 1;
+    var srvToday = 0, srvRealtime = 0;
+    function renderToday() {
+      var v = Math.max(srvToday || 0, srvRealtime || 0, localToday || 0, 0);
+      if (tdEl) tdEl.textContent = v.toLocaleString();
+    }
+
+    if (!GAS_URL) {   // 서버 연결 전: 숫자 대신 '–'
+      [rtEl, totEl, pvEl].forEach(function (el) { if (el) el.textContent = '–'; });
+      renderToday();
+      return;
+    }
+    renderToday();
+
+    fetch(GAS_URL)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) return;
+        if (typeof data.realtime === 'number') { srvRealtime = data.realtime; if (rtEl) rtEl.textContent = data.realtime.toLocaleString(); }
+        if (typeof data.today    === 'number') { srvToday = data.today; }
+        if (totEl && typeof data.total     === 'number') totEl.textContent = data.total.toLocaleString();
+        if (pvEl  && typeof data.pageviews === 'number') pvEl.textContent  = data.pageviews.toLocaleString();
+        renderToday();
+      })
+      .catch(function () { /* 실패 시 로컬 하한 유지 */ });
+  })();
+</script>
 </body>
 </html>
