@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- 어디고 odigo v1.6 (2026-11-05) PNG 아이콘을 img/ 폴더로 정리, 경로 수정 + ?v=3. favicon.ico·manifest는 맨 위 유지 -->
+<!-- 어디고 odigo v1.7 (2026-11-05) 0단계 기본 지도 — MapLibre+VWorld 배경(일반/위성), 장소 검색(카카오 장소·주소), 내 조사 장소 저장·오늘 방문·방문 기록(localStorage, 서버 전송 없음), 외부 길찾기(네이버·카카오·T맵), 「주변정보」 패널 틀(주차장·CCTV·교통·치안 — 실제 API 연결 전이라 전부 비활성·「준비 중」 표시, 가짜 자료 없음). 하단 접속 카운터 유지. 설계: 설계/v1.1 -->
+<!-- (이전) 어디고 odigo v1.6 (2026-11-05) PNG 아이콘을 img/ 폴더로 정리, 경로 수정 + ?v=3. favicon.ico·manifest는 맨 위 유지 -->
 <!-- (이전) 어디고 odigo v1.5 (2026-11-05) 하단 카운터를 어디고 GA4 Apps Script(/exec)에 연결 — 실시간·오늘·누적·조회수 표시 -->
 <!-- (이전) 어디고 odigo v1.4 (2026-11-05) 즐겨찾기 제목을 「어디고」로 변경(<title>) -->
 <!-- (이전) 어디고 odigo v1.3 (2026-11-05) 즐겨찾기·홈화면 아이콘이 두당으로 나오던 문제 수정 — 어디고 아이콘(favicon.ico·16/32·apple-touch-icon·192/512)+manifest, ?v=2 캐시 무효화, 앱 이름 어디고 -->
@@ -8,7 +9,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-6GZCBFEGQ0"></script>
 <script>
@@ -19,6 +20,7 @@
   gtag('config', 'G-6GZCBFEGQ0');
 </script>
 <title>어디고</title>
+<meta name="description" content="어디고 — 조사 장소를 찾고 저장하며 현장 방문을 지원하는 지도 (위치 현장조사지원)">
 <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png?v=3">
 <link rel="apple-touch-icon-precomposed" href="img/apple-touch-icon-precomposed.png?v=3">
 <link rel="icon" href="favicon.ico?v=3" sizes="any">
@@ -30,82 +32,57 @@
 <meta name="apple-mobile-web-app-title" content="어디고">
 <meta name="application-name" content="어디고">
 <meta name="theme-color" content="#f07a22">
-<style>
-:root { --color-primary: #f07a22; --color-text-soft: #6b7a75; }
-body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f1f6f4; color: #19352e; font-family: system-ui, sans-serif; }
-main { margin: 24px 16px 8px; padding: 40px 32px; border-radius: 20px; background: white; text-align: center; }
-h1 { margin: 0 0 16px; }
-p { margin: 0; line-height: 1.7; }
-footer.info {
-  margin-top: 8px;
-  padding: 14px 16px;
-  text-align: center;
-  font-size: 11.5px;
-  color: var(--color-text-soft);
-  line-height: 1.7;
-}
-footer.info .brand-line { font-size: 13px; font-weight: 700; color: var(--color-primary); margin: 6px 0 4px; }
-footer.info .meta { font-variant-numeric: tabular-nums; color: #7a8079; }
-</style>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="css/odigo.css?v=1.7">
 </head>
 <body>
-<main>
-<h1>어디고 EDIGO</h1>
-<p>서비스를 준비 중입니다.<br>조금만 기다려 주세요.</p>
-</main>
 
-<!-- 푸터 -->
-<footer class="info">
-  <div class="brand-line">위치 현장조사지원 · 어디고 v1.0</div>
-  <div class="meta" style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;">
-    실시간 <strong id="realtimeCount">…</strong>명
-    &nbsp;·&nbsp;
-    오늘 <strong id="todayCount">…</strong>명
-    &nbsp;·&nbsp;
-    누적 <strong id="totalCount">…</strong>명
-    &nbsp;·&nbsp;
-    조회수 <strong id="pageviewCount">…</strong>회
+<!-- 상단: 로고 + 검색 -->
+<header class="topbar">
+  <div class="logo">어디고</div>
+  <form id="searchForm" class="search" autocomplete="off">
+    <input id="searchInput" type="search" placeholder="장소·주소 검색 (예: 고령군청, 대가야읍 지산리 123)" enterkeyhint="search">
+    <button type="submit" aria-label="검색">검색</button>
+  </form>
+</header>
+<div id="searchResults" class="search-results" hidden></div>
+
+<!-- 지도 -->
+<div id="map"></div>
+
+<!-- 지도 오른쪽 버튼 -->
+<div class="fab-col">
+  <button id="btnNearby" class="fab" title="주변정보"><span>🧭</span><small>주변정보</small></button>
+  <button id="btnBase" class="fab" title="배경지도 전환"><span>🛰️</span><small>위성</small></button>
+  <button id="btnLocate" class="fab" title="내 위치"><span>📍</span><small>내 위치</small></button>
+</div>
+
+<!-- 하단 바 -->
+<nav class="bottombar">
+  <button id="btnToday" class="bb-btn"><b>오늘 방문</b> <span id="cntToday">0</span></button>
+  <button id="btnPlaces" class="bb-btn"><b>내 조사 장소</b> <span id="cntPlaces">0</span></button>
+  <button id="btnInfo" class="bb-btn small" aria-label="정보">ⓘ</button>
+</nav>
+
+<!-- 접속 카운터 (텐아르 방식) -->
+<div class="counter-strip" aria-label="접속 통계">
+  실시간 <strong id="realtimeCount">…</strong> · 오늘 <strong id="todayCount">…</strong> · 누적 <strong id="totalCount">…</strong> · 조회 <strong id="pageviewCount">…</strong>
+</div>
+
+<!-- 하단 시트 (장소 목록·장소 카드·주변정보·정보 공용) -->
+<div id="sheetBackdrop" class="sheet-backdrop" hidden></div>
+<section id="sheet" class="sheet" hidden aria-modal="true" role="dialog">
+  <div class="sheet-head">
+    <div id="sheetTitle" class="sheet-title"></div>
+    <button id="sheetClose" class="sheet-close" aria-label="닫기">✕</button>
   </div>
-  <div class="meta" style="margin-top:4px;">최초 빌드 2026.11.5 · by <strong>Mr. Hyun</strong></div>
-</footer>
+  <div id="sheetBody" class="sheet-body"></div>
+</section>
 
-<script>
-  /* ====== 실시간 접속 + 오늘 방문자 + 누적 방문자 (GA4 Apps Script 서버값) ====== */
-  (function () {
-    var GAS_URL = 'https://script.google.com/macros/s/AKfycby132T2PIJQ8VPKhQLzQZaxEUBwC6c-7N-h60PGsx3MpU0O58qD7Lg5OJqhvQjD4SJoww/exec';   // 어디고 카운터(GA4 Apps Script)
+<div id="toast" class="toast" hidden></div>
 
-    var rtEl  = document.getElementById('realtimeCount');
-    var tdEl  = document.getElementById('todayCount');
-    var totEl = document.getElementById('totalCount');
-    var pvEl  = document.getElementById('pageviewCount');
-
-    /* 오늘 = max(서버 오늘, 실시간, 이 기기 하한 1) — 서버 '오늘'이 집계 지연으로 0이어도 실시간보다 작아지지 않게 */
-    var localToday = 1;
-    var srvToday = 0, srvRealtime = 0;
-    function renderToday() {
-      var v = Math.max(srvToday || 0, srvRealtime || 0, localToday || 0, 0);
-      if (tdEl) tdEl.textContent = v.toLocaleString();
-    }
-
-    if (!GAS_URL) {   // 서버 연결 전: 숫자 대신 '–'
-      [rtEl, totEl, pvEl].forEach(function (el) { if (el) el.textContent = '–'; });
-      renderToday();
-      return;
-    }
-    renderToday();
-
-    fetch(GAS_URL)
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (!data.ok) return;
-        if (typeof data.realtime === 'number') { srvRealtime = data.realtime; if (rtEl) rtEl.textContent = data.realtime.toLocaleString(); }
-        if (typeof data.today    === 'number') { srvToday = data.today; }
-        if (totEl && typeof data.total     === 'number') totEl.textContent = data.total.toLocaleString();
-        if (pvEl  && typeof data.pageviews === 'number') pvEl.textContent  = data.pageviews.toLocaleString();
-        renderToday();
-      })
-      .catch(function () { /* 실패 시 로컬 하한 유지 */ });
-  })();
-</script>
+<script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script src="js/nearby.js?v=1.7"></script>
+<script src="js/odigo.js?v=1.7"></script>
 </body>
 </html>
