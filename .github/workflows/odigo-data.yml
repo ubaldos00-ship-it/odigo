@@ -1,0 +1,45 @@
+# 어디고 공공데이터 자동 갱신 — 주차장 · CCTV 설치 위치
+# 매주 월요일 03:00 (한국시간)에 GitHub이 직접 공공데이터 API를 받아 odigo/data/ 를 새로 만들고 저장합니다.
+# 인증키: 저장소 Settings → Secrets and variables → Actions → DATAGOKR_KEY
+# 수동 실행: Actions 탭 → 「어디고 공공데이터 자동 갱신」 → Run workflow
+name: 어디고 공공데이터 자동 갱신
+
+on:
+  schedule:
+    - cron: '0 18 * * 0'   # UTC 일요일 18:00 = 한국 월요일 03:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: odigo-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 공공데이터 받기 (주차장 · CCTV)
+        env:
+          DATAGOKR_KEY: ${{ secrets.DATAGOKR_KEY }}
+        run: python .github/scripts/odigo_data.py odigo
+
+      - name: 바뀐 자료 저장
+        run: |
+          git config user.name "odigo-bot"
+          git config user.email "odigo-bot@users.noreply.github.com"
+          git add odigo/data
+          if git diff --cached --quiet; then
+            echo "바뀐 자료 없음"
+          else
+            git commit -m "어디고 공공데이터 자동 갱신 $(date -u +%Y-%m-%d)"
+            git push
+          fi
