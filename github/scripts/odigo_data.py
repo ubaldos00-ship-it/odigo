@@ -160,28 +160,84 @@ CCTV_ROWS = 100      # 이 API의 한 번 최대치
 CCTV_CELL = 0.05     # 도심은 촘촘해서 주차장보다 작은 격자
 
 
-def cctv_page(key, page):
-    j = get_json(CCTV_URL + '?serviceKey=' + key + '&' + urllib.parse.urlencode({'pageNo': page, 'numOfRows': CCTV_ROWS, 'returnType': 'json'}))
-    body = (j.get('response') or j).get('body') or {}
-    items = body.get('items') or []
-    if isinstance(items, dict):
-        items = items.get('item') or []
-    if isinstance(items, dict):
-        items = [items]
-    return int(body.get('totalCount') or 0), items
+
+
+def cctv_page(key, page, cond=None):
+    params = {'pageNo': page, 'numOfRows': CCTV_ROWS, 'returnType': 'json'}
+    q = urllib.parse.urlencode(params) + ''.join('&' + urllib.parse.quote(a, safe='') + '=' + urllib.parse.quote(b, safe='') for a, b in (cond or []))
+    for i in range(5):
+        j = get_json(CCTV_URL + '?serviceKey=' + key + '&' + q)
+        resp = j.get('response')
+        if resp and 'body' in resp:           # 정상 응답
+            body = resp['body'] or {}
+            items = body.get('items') or []
+            if isinstance(items, dict):
+                items = items.get('item') or []
+            if isinstance(items, dict):
+                items = [items]
+            return int(body.get('totalCount') or 0), items
+        time.sleep(3 + i * 5)                 # {"OpenAPI_ServiceResponse": … HTTP_ERROR} 등 → 다시 시도
+    raise RuntimeError('CCTV %d쪽을 받지 못했습니다: %s' % (page, json.dumps(j, ensure_ascii=False)[:150]))
+
+
+# 개방자치단체코드 목록 (2026-11-06 실측: 이 227개로 전체 381,409행 중 380,095행 = 99.66퍼센트)
+# 쪽번호가 깊어지면 API가 느려지다 오류를 내므로(약 1,500쪽~), 자치단체별로 나눠 받는다(가장 큰 곳도 약 16,000행).
+CCTV_CODES = [
+    '3000000', '3010000', '3020000', '3040000', '3050000', '3060000', '3070000', '3080000', '3090000', '3100000',
+    '3110000', '3120000', '3130000', '3140000', '3150000', '3160000', '3170000', '3180000', '3190000', '3200000',
+    '3210000', '3220000', '3230000', '3240000', '3250000', '3260000', '3270000', '3280000', '3290000', '3300000',
+    '3310000', '3320000', '3330000', '3340000', '3350000', '3360000', '3370000', '3380000', '3390000', '3400000',
+    '3410000', '3420000', '3430000', '3440000', '3450000', '3460000', '3470000', '3480000', '3491000', '3501000',
+    '3510500', '3520000', '3530000', '3540000', '3550000', '3561000', '3565000', '3570000', '3580000', '3640000',
+    '3650000', '3660000', '3670000', '3680000', '3690000', '3700000', '3710000', '3720000', '3740000', '3780000',
+    '3820000', '3830000', '3860000', '3900000', '3910000', '3920000', '3930000', '3940000', '3970000', '3980000',
+    '3990000', '4000000', '4010000', '4020000', '4030000', '4040000', '4050000', '4060000', '4070000', '4080000',
+    '4090000', '4140000', '4160000', '4170000', '4181000', '4191000', '4201000', '4211000', '4221000', '4231000',
+    '4241000', '4251000', '4261000', '4271000', '4281000', '4291000', '4301000', '4311000', '4321000', '4331000',
+    '4341000', '4351000', '4390000', '4400000', '4420000', '4430000', '4440000', '4450000', '4460000', '4470000',
+    '4480000', '4490000', '4500000', '4510000', '4520000', '4530000', '4540000', '4550000', '4570000', '4580000',
+    '4590000', '4600000', '4610000', '4620000', '4641000', '4671000', '4681000', '4691000', '4701000', '4711000',
+    '4721000', '4731000', '4741000', '4751000', '4761000', '4771000', '4781000', '4791000', '5020000', '5050000',
+    '5060000', '5070000', '5080000', '5090000', '5100000', '5110000', '5120000', '5130000', '5141000', '5150000',
+    '5160000', '5170000', '5180000', '5190000', '5200000', '5210000', '5220000', '5230000', '5240000', '5250000',
+    '5260000', '5310000', '5330000', '5340000', '5350000', '5360000', '5370000', '5380000', '5390000', '5400000',
+    '5410000', '5420000', '5430000', '5440000', '5450000', '5460000', '5470000', '5480000', '5540000', '5570000',
+    '5580000', '5590000', '5600000', '5670000', '5680000', '5690000', '5700000', '5710000', '5780000', '5785000',
+    '5790000', '5795000', '5800000', '5805000', '5810000', '5815000', '5820000', '5825000', '5830000', '5835000',
+    '5840000', '5845000', '5850000', '5855000', '5860000', '5865000', '5870000', '5875000', '5880000', '5885000',
+    '5890000', '5895000', '5900000', '5905000', '5910000', '6510000', '6520000',
+]
+
+
+def cctv_parts(key):
+    """자치단체코드별로 나눠 [(행 수, 조건)] 를 돌려준다. 행이 없는 코드는 뺀다."""
+    out = []
+    for c in CCTV_CODES:
+        cond = [('cond[OPN_ATMY_GRP_CD::EQ]', c)]
+        n = cctv_page(key, 1, cond)[0]
+        if n:
+            out.append((n, cond))
+    return out
 
 
 def build_cctv(key, odigo_dir, cache_dir=None, workers=4):
-    total, first = cctv_page(key, 1)
-    pages = math.ceil(total / CCTV_ROWS)
-    print('[CCTV] 전체 %d행 · %d번 요청' % (total, pages), flush=True)
+    parts = cctv_parts(key)
+    total = cctv_page(key, 1)[0]
+    covered = sum(n for n, _ in parts)
+    if covered < total * 0.99:      # 새 자치단체코드가 생겨 1% 넘게 빠지면 목록 갱신이 필요하다는 뜻
+        sys.exit('CCTV 자치단체별 합계(%d)가 전체(%d)의 99%%보다 적습니다. CCTV_CODES 목록을 갱신하세요.' % (covered, total))
+    total = covered
+    jobs = [(pi, p, c) for pi, (n, c) in enumerate(parts) for p in range(1, math.ceil(n / CCTV_ROWS) + 1)]
+    print('[CCTV] 전체 %d행 · %d부분 · %d번 요청' % (total, len(parts), len(jobs)), flush=True)
 
-    def one(p):
+    def one(job):
+        pi, p, c = job
         if cache_dir:   # PC에서 중간에 끊겨도 이어받기
-            fp = os.path.join(cache_dir, 'p%05d.json' % p)
+            tag = '_'.join(v for _, v in c) or 'all'                       # 나누는 기준이 바뀌어도 섞이지 않게
+            fp = os.path.join(cache_dir, 'q%s_%05d.json' % (tag, p))
             if os.path.exists(fp):
                 return json.load(open(fp, encoding='utf-8'))
-        items = first if p == 1 else cctv_page(key, p)[1]
+        items = cctv_page(key, p, c)[1]
         if cache_dir:
             with open(fp, 'w', encoding='utf-8') as f:
                 json.dump(items, f, ensure_ascii=False)
@@ -191,11 +247,14 @@ def build_cctv(key, odigo_dir, cache_dir=None, workers=4):
         os.makedirs(cache_dir, exist_ok=True)
     raw, done = [], 0
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        for items in ex.map(one, range(1, pages + 1)):
+        for items in ex.map(one, jobs):
             raw.extend(items)
             done += 1
             if done % 200 == 0:
-                print('  %d/%d' % (done, pages), flush=True)
+                print('  %d/%d' % (done, len(jobs)), flush=True)
+    # 안전장치: 받은 행 수가 전체와 맞아야 저장 (1% 이내 차이는 받는 사이 갱신으로 허용)
+    if abs(len(raw) - total) > total * 0.01:
+        sys.exit('CCTV 받은 행(%d)이 전체(%d)와 맞지 않아 저장하지 않습니다.' % (len(raw), total))
 
     purposes, groups, dropped, upd, refs = [], {}, 0, Counter(), Counter()
     pidx = {}
