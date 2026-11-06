@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v1.7';
+  var APP_VERSION = 'v2.2';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -146,7 +146,7 @@
         '<button class="btn" data-act="today">' + (ti >= 0 ? '오늘 방문 빼기' : '＋ 오늘 방문에 추가') + '</button>' +
         '<button class="btn" data-act="visit">✔ 방문 기록</button>' +
       '</div>' +
-      '<div class="row"><button class="btn full" disabled title="1차 개발 예정 — 공공데이터 연결 후 제공">🅿 이 장소 주변 주차장 <span class="badge-wait">준비 중</span></button></div>' +
+      '<div class="row"><button class="btn" style="flex:1" data-act="park">🅿 이 장소 주변 주차장</button><button class="btn" style="flex:1" data-act="crime">🛡 이 지역 범죄 통계</button></div>' +
       '<label class="fld">장소 이름</label><input class="inp" data-f="name" value="' + esc(p.name) + '">' +
       '<label class="fld">메모</label><textarea data-f="memo" placeholder="조사 대상·연락처 없이 현장 메모만 (이 기기에만 저장)">' + esc(p.memo) + '</textarea>' +
       '<label class="fld">방문 기록 (' + visits.length + ')</label>' +
@@ -165,6 +165,14 @@
     body.querySelector('[data-act="nav"]').addEventListener('click', function () { openNav(p.name, p.lat, p.lng); });
     body.querySelector('[data-act="today"]').addEventListener('click', function () { setToday(p, !isToday(p)); openPlace(p.id); });
     body.querySelector('[data-act="visit"]').addEventListener('click', function () { openVisitForm(p); });
+    body.querySelector('[data-act="crime"]').addEventListener('click', function () {
+      try { window.OdigoNearby.crimeSheet(p.lat, p.lng, p.name, p.addr); }
+      catch (e) { toast('범죄 통계를 불러오지 못했습니다'); }
+    });
+    body.querySelector('[data-act="park"]').addEventListener('click', function () {
+      try { window.OdigoNearby.parkingNear(p.lat, p.lng, p.name, 'place'); }
+      catch (e) { toast('주차장 정보를 불러오지 못했습니다'); }
+    });
     body.querySelector('[data-act="center"]').addEventListener('click', function () { closeSheet(); map.flyTo({ center: [p.lng, p.lat], zoom: Math.max(map.getZoom(), 16) }); });
     body.querySelector('[data-act="del"]').addEventListener('click', function () {
       if (!confirm('「' + p.name + '」을(를) 삭제할까요? 방문 기록도 함께 지워집니다.')) return;
@@ -289,6 +297,21 @@
         } catch (e) { res([]); }
       });
       return Promise.all([addrs, places]).then(function (a) { return a[0].concat(a[1]); });
+    });
+  }
+  /* 좌표 → 행정구역 1·2단계 (범죄 통계 지역 연결용). 실패하면 null */
+  function regionOf(lat, lng) {
+    return ensureKakao().then(function (ok) {
+      if (!ok) return null;
+      return new Promise(function (res) {
+        try {
+          new kakao.maps.services.Geocoder().coord2RegionCode(lng, lat, function (r, st) {
+            if (st !== kakao.maps.services.Status.OK || !r.length) { res(null); return; }
+            var h = r.filter(function (x) { return x.region_type === 'H'; })[0] || r[0];
+            res({ r1: h.region_1depth_name, r2: h.region_2depth_name });
+          });
+        } catch (e) { res(null); }
+      });
     });
   }
   function reverseGeocode(lat, lng) {
@@ -455,6 +478,9 @@
       renderToday();
     }).catch(function () {});
   })();
+
+  /* 주변정보 모듈(nearby.js)이 쓰는 공용 기능 */
+  window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf };
 
   renderMarkers();
   updateCounts();
