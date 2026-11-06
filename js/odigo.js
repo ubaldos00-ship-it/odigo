@@ -13,7 +13,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v3.2';
+  var APP_VERSION = 'v3.3';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -227,7 +227,7 @@
         (lb ? '<span class="pin-label">' + esc(lb) + '</span>' : '');
       el.title = s.name + ' · ' + siteLabel(s);
       el.addEventListener('click', function (ev) { ev.stopPropagation(); openSite(s.id); });
-      var m = new maplibregl.Marker({ element: el, anchor: 'bottom', offset: [0, -2] }).setLngLat([s.lng, s.lat]).addTo(map);
+      var m = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([s.lng, s.lat]).addTo(map);
       m.getElement().style.zIndex = ord ? 3 : 2;
       markers[s.id] = m;
     });

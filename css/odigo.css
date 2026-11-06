@@ -439,3 +439,11 @@ body.pin-labels .pin-label { display: block; }
 .tloc-marker .tloc-fan { position: absolute; left: 50%; top: 50%; width: 66px; height: 58px; margin: -58px 0 0 -33px; background: linear-gradient(to top, rgba(26,115,232,.66), rgba(26,115,232,.06)); -webkit-clip-path: polygon(50% 100%, 0% 0%, 100% 0%); clip-path: polygon(50% 100%, 0% 0%, 100% 0%); display: none; }
 .tloc-marker.has-heading .tloc-arrow, .tloc-marker.has-heading .tloc-fan { display: block; }
 .gps-status { position: fixed; left: 50%; bottom: calc(100px + var(--safe-b)); transform: translateX(-50%); z-index: 16; padding: 5px 12px; border-radius: 14px; font-size: 12px; font-weight: 800; color: #fff; background: #6b7280; box-shadow: 0 2px 9px rgba(0,0,0,.3); pointer-events: none; white-space: nowrap; }
+
+/* v3.3 핀 위치 밀림 수정 — 지도 마커는 반드시 MapLibre의 position:absolute 를 써야 함
+   (v2.9에서 .pin-wrap 에 position:relative 를 줘서 핀이 좌표 대신 차례로 아래로 쌓였음) */
+.maplibregl-marker.pin-wrap,
+.maplibregl-marker.tloc-marker,
+.maplibregl-marker.me-wrap { position: absolute; }
+/* 이름표·오늘 표는 핀 위치 계산(아래 끝 = 좌표)에 끼지 않게 띄워서 표시 */
+.maplibregl-marker.pin-wrap .pin-label { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 1px; }
