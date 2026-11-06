@@ -1,4 +1,4 @@
-/* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4)
+/* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4) · v2.8: 나 조사하러 간다(safety.js) 연결·안전 연락 설정·공유 위치 링크 열기
    · 배경지도: MapLibre + VWorld WMTS (레이어 패널은 layers.js)
    · 검색: 내 조사구(이 기기) → 카카오 주소·장소
    · 자료: 프로필·조사구·방문 기록을 store.js가 암호화해 이 기기에만 저장 (서버 전송 없음)
@@ -9,12 +9,13 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v2.7';
+  var APP_VERSION = 'v2.8';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
   var GAS_URL = 'https://script.google.com/macros/s/AKfycby132T2PIJQ8VPKhQLzQZaxEUBwC6c-7N-h60PGsx3MpU0O58qD7Lg5OJqhvQjD4SJoww/exec';   // 어디고 카운터(GA4 Apps Script)
 
+  var OPENED_BY_PIN = /[?&]pin=/.test(location.search);   /* 카톡으로 받은 위치 링크로 열면 처음 설정 창을 바로 띄우지 않음 */
   var VIEW_KEY = 'odigo_view_v1';
   var BASE_KEY = 'odigo_base_v1';
 
@@ -209,7 +210,10 @@
       '<label class="fld">닉네임</label><input class="inp" id="pfNick" maxlength="12" value="' + esc(p.nickname || '') + '" placeholder="예: 현장하늘" autocomplete="nickname">' +
       '<p class="muted">텐아르 게임에서 쓰는 이름을 넣어 주세요. 어디고 화면과 카톡·문자 메시지에 이 이름이 들어갑니다.</p>' +
       '<label class="fld">주요업무분야 (하나 선택)</label>' + divRadios(p.division) +
-      (first ? '' : '<p class="muted">기본 분야를 바꾸면 시작 화면과 오른쪽 기본 버튼만 바뀝니다. 이미 저장한 조사구의 분야는 조사구 수정에서 바꿉니다.</p>') +
+      (first ? '' : '<p class="muted">기본 분야를 바꾸면 시작 화면과 오른쪽 기본 버튼만 바뀝니다. 이미 저장한 조사구의 분야는 조사구 수정에서 바꿉니다.</p>' +
+        '<label class="fld">🚨 현장 안전 연락 — 기본 문자 수신 번호</label><input class="inp" id="pfSms" inputmode="tel" maxlength="20" placeholder="예: 010-1234-5678" value="' + esc((p.safety || {}).smsTo || '') + '">' +
+        '<label class="fld">카카오톡 안전 연락방 이름</label><input class="inp" id="pfRoom" maxlength="30" placeholder="예: 고령 현장 안전방" value="' + esc((p.safety || {}).kakaoRoom || '') + '">' +
+        '<p class="muted">「나 조사하러 간다」에서 문자 받는 번호의 기본값과, 카톡 공유 때 고를 방 이름 안내에 씁니다. 보내기 전에 바꿀 수 있습니다.</p>') +
       '<div class="row"><button class="btn primary full" id="pfSave" disabled>' + (first ? '저장하고 시작' : '저장') + '</button></div>',
       { lock: !!first });
     var nick = body.querySelector('#pfNick'), btn = body.querySelector('#pfSave');
@@ -219,12 +223,15 @@
     check();
     btn.addEventListener('click', function () {
       var d = body.querySelector('input[name="pdiv"]:checked').value;
-      db.profile = { v: 1, nickname: nick.value.trim().slice(0, 12), division: d, safety: (db.profile && db.profile.safety) || {},
+      var sf = (db.profile && db.profile.safety) || {};
+      var smsEl = body.querySelector('#pfSms'), roomEl = body.querySelector('#pfRoom');
+      if (smsEl) sf = { smsTo: smsEl.value.replace(/[^\d+\-\s]/g, '').trim(), kakaoRoom: roomEl.value.trim() };
+      db.profile = { v: 1, nickname: nick.value.trim().slice(0, 12), division: d, safety: sf,
         createdAt: (db.profile && db.profile.createdAt) || nowIso(), updatedAt: nowIso() };
       persist();
       closeSheet(true);
       toast('저장했습니다');
-      openHome(d);
+      if (first) openHome(d);
     });
   }
 
@@ -572,6 +579,7 @@
         '<button class="btn" data-act="visit">✔ 방문 기록</button>' +
       '</div>' +
       '<div class="row"><button class="btn" style="flex:1" data-act="park">🅿 주변 주차장</button><button class="btn" style="flex:1" data-act="crime">🛡 이 지역 범죄 통계</button></div>' +
+      '<div class="row"><button class="btn sf-go full" data-act="safe">🚨 이 핀 위치 보내기 (나 조사하러 간다)</button></div>' +
       (s.memo ? '<label class="fld">메모</label><div class="memo">' + esc(s.memo) + '</div>' : '') +
       '<label class="fld">방문 기록 (' + evs.length + ')</label>' +
       (evs.length ? evs.map(function (e) { return '<div class="visit"><time>' + esc(fmtTime(e.at)) + '</time>' + esc(e.note || '방문') + '</div>'; }).join('') : '<div class="muted">아직 방문 기록이 없습니다.</div>') +
@@ -583,6 +591,7 @@
     on('today', function () { setToday(s.id, !ord); openSite(s.id); });
     on('visit', function () { openVisitForm(s); });
     on('cls', function () { openClassify([s.id]); });
+    on('safe', function () { openSafety({ name: s.name, addr: s.addr, lat: s.lat, lng: s.lng }); });
     on('edit', function () { openSiteForm({}, s); });
     on('crime', function () { try { window.OdigoNearby.crimeSheet(s.lat, s.lng, s.name, s.addr); } catch (e) { toast('범죄 통계를 불러오지 못했습니다'); } });
     on('park', function () { try { window.OdigoNearby.parkingNear(s.lat, s.lng, s.name, 'place'); } catch (e) { toast('주차장 정보를 불러오지 못했습니다'); } });
@@ -704,8 +713,9 @@
   }
 
   /* ───────── 검색 (내 조사구 먼저) ───────── */
-  var tempMarker = null, tempPopup = null;
+  var tempMarker = null, tempPopup = null, tempTarget = null;
   function clearTemp() {
+    tempTarget = null;
     if (tempPopup) { var p = tempPopup; tempPopup = null; p.remove(); }
     if (tempMarker) { tempMarker.remove(); tempMarker = null; }
   }
@@ -759,7 +769,8 @@
     if (!noFly) map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
     var wrap = document.createElement('div');
     wrap.innerHTML = '<b>' + esc(r.name) + '</b><div class="pop-addr">' + esc(r.addr || (r.lat.toFixed(5) + ', ' + r.lng.toFixed(5) + ' · 주소 확인 중…')) + '</div>' +
-      '<button class="btn primary full" data-s>조사구로 등록</button>';
+      '<button class="btn primary full" data-s>조사구로 등록</button>' +
+      '<button class="btn sf-go full" data-sf style="margin-top:6px">🚨 이 위치 보내기</button>';
     var pop = new maplibregl.Popup({ offset: 40, closeButton: true, closeOnClick: false, maxWidth: '280px' })
       .setLngLat([r.lng, r.lat]).setDOMContent(wrap).addTo(map);
     tempPopup = pop;
@@ -768,6 +779,11 @@
       if (!db.profile) { openProfile(true); return; }
       openSiteForm(r, null);
     });
+    wrap.querySelector('[data-sf]').addEventListener('click', function () {
+      if (!db.profile) { openProfile(true); return; }
+      openSafety({ name: r.kind === '장소' ? r.name : '지도에서 선택한 위치', addr: r.addr, lat: r.lat, lng: r.lng });
+    });
+    tempTarget = r;
     return wrap;
   }
 
@@ -933,9 +949,41 @@
     }).catch(function () {});
   })();
 
-  /* 주변정보·레이어 모듈이 쓰는 공용 기능 */
+  /* ───────── 나 조사하러 간다 (safety.js) ───────── */
+  function openSafety(target) {
+    if (!db.profile) { openProfile(true); return; }
+    if (!window.OdigoSafety) { toast('안전 연락 기능을 불러오지 못했습니다'); return; }
+    OdigoSafety.open(target);
+  }
+  /* 아래 버튼: 열려 있는 조사구 카드 → 지도에 찍은 임시 핀 → 없으면 현재 위치만 */
+  $('btnSafety').addEventListener('click', function () {
+    var s = curView && !$('sheet').hidden ? findSite(curView) : null;
+    if (s) { openSafety({ name: s.name, addr: s.addr, lat: s.lat, lng: s.lng }); return; }
+    if (tempTarget && tempMarker) { var r = tempTarget; openSafety({ name: r.kind === '장소' ? r.name : '지도에서 선택한 위치', addr: r.addr, lat: r.lat, lng: r.lng }); return; }
+    openSafety(null);
+  });
+  /* 카톡으로 받은 어디고 ?pin= 링크를 열었을 때 그 위치를 보여 줌 */
+  var sharedMarker = null;
+  function showSharedPin(o) {
+    if (sharedMarker) sharedMarker.remove();
+    var el = document.createElement('div'); el.className = 'pin-wrap'; el.innerHTML = '<div class="pin shared"><i>!</i></div>';
+    sharedMarker = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([o.lng, o.lat]).addTo(map);
+    function show() {
+      map.jumpTo({ center: [o.lng, o.lat], zoom: 16 });
+      var wrap = document.createElement('div');
+      wrap.innerHTML = '<span class="pub-tag">공유받은 위치</span><br><b>' + esc(o.name) + '</b><div class="pop-addr">' + o.lat.toFixed(5) + ', ' + o.lng.toFixed(5) + '</div>' +
+        '<a class="btn full" href="' + esc(o.kakao) + '" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;margin-bottom:6px">카카오맵에서 열기</a>' +
+        '<button class="btn primary full" data-n>🚗 길찾기</button>';
+      new maplibregl.Popup({ offset: 40, closeOnClick: false, maxWidth: '260px' }).setLngLat([o.lng, o.lat]).setDOMContent(wrap).addTo(map);
+      wrap.querySelector('[data-n]').addEventListener('click', function () { openNav(o.name, o.lat, o.lng); });
+    }
+    if (map.loaded()) show(); else map.once('load', show);
+  }
+
+  /* 주변정보·레이어·안전 연락 모듈이 쓰는 공용 기능 */
   window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
-    ensureKakao: ensureKakao,
+    ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
+    getProfile: function () { return db.profile; },
     pinsForAlt: function () {
       return visibleSites().filter(function (s) { return isFinite(s.lat) && isFinite(s.lng); }).map(function (s) {
         return { id: s.id, name: s.name, lat: s.lat, lng: s.lng, order: todayOrderOf(s.id), sel: s.id === selectedId };
@@ -950,7 +998,7 @@
       renderMarkers(); updateCounts(); renderDivBtns();
       if (r.status === 'migrated') toast('v2.3 자료 ' + r.count + '곳을 암호화 저장으로 옮겼습니다');
       if (r.status === 'nocrypto' || r.status === 'keylost' || r.status === 'migratefail') { $('btnInfo').click(); return; }
-      if (!db.profile) openProfile(true);
+      if (!db.profile && !OPENED_BY_PIN) openProfile(true);
       refillRegions(false);
     });
   }
