@@ -1,4 +1,5 @@
 /* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4) · v2.8: 나 조사하러 간다(safety.js) 연결·안전 연락 설정·공유 위치 링크 열기
+   · v2.9: 조사구 항목(조사구번호·층·카드·구분), 업무별 핀 모양·색·이름표 설정, 핀 안 번호(조사별·읍면동 순서), 목록 드롭다운 필터, 내 위치 3단(이동·방향·해제)
    · 배경지도: MapLibre + VWorld WMTS (레이어 패널은 layers.js)
    · 검색: 내 조사구(이 기기) → 카카오 주소·장소
    · 자료: 프로필·조사구·방문 기록을 store.js가 암호화해 이 기기에만 저장 (서버 전송 없음)
@@ -9,7 +10,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v2.8';
+  var APP_VERSION = 'v2.9';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -39,9 +40,28 @@
       { id: 'employ', name: '고용' }, { id: 'census', name: '농림어업' }, { id: 'finance', name: '가계금융' }] }
   ];
   var UNASSIGNED_COLOR = '#f07a22';
+  var KINDS = ['논', '밭', '대지', '축사', '응답자집', '기타'];   /* 조사구 「구분」 */
+  var SHAPES = [['drop', '물방울'], ['circle', '동그라미'], ['square', '네모'], ['diamond', '마름모'], ['triangle', '세모'], ['star', '별']];
+  var LABEL_FIELDS = [['type', '조사명'], ['name', '이름'], ['addr', '주소'], ['floorCard', '층-카드'], ['josaguNo', '조사구번호'], ['crop', '작물']];
+  var DEFAULT_LABEL = ['name'];
+  function pinStyleOf(divId) {
+    var ps = (db.profile && db.profile.pinStyle && db.profile.pinStyle[divId || '_none']) || {};
+    var d = divOf(divId);
+    return { color: ps.color || (d ? d.color : UNASSIGNED_COLOR), shape: ps.shape || 'drop' };
+  }
+  function labelFieldsOf(divId) { var pl = db.profile && db.profile.pinLabel && db.profile.pinLabel[divId || '_none']; return Array.isArray(pl) ? pl : DEFAULT_LABEL; }
+  function floorCard(s) { return [s.floor, s.card].filter(function (x) { return x != null && String(x).trim() !== ''; }).join('-'); }
+  function labelText(s) {
+    return labelFieldsOf(s.division).map(function (f) {
+      if (f === 'type') { var t = typeOf(s.division, s.type); return t ? t.name : ''; }
+      if (f === 'floorCard') return floorCard(s);
+      if (f === 'addr') return (s.addr || '').replace(/^(\S+\s+){1,2}/, '');   /* 시도·시군구는 줄여 표시 */
+      return s[f] || '';
+    }).filter(Boolean).join(' · ');
+  }
   function divOf(id) { for (var i = 0; i < DIVISIONS.length; i++) if (DIVISIONS[i].id === id) return DIVISIONS[i]; return null; }
   function typeOf(divId, typeId) { var d = divOf(divId); if (!d) return null; for (var i = 0; i < d.types.length; i++) if (d.types[i].id === typeId) return d.types[i]; return null; }
-  function siteColor(s) { var d = divOf(s.division); return d ? d.color : UNASSIGNED_COLOR; }
+  function siteColor(s) { return pinStyleOf(s.division).color; }
   function siteLabel(s) {
     var d = divOf(s.division); if (!d) return '미분류';
     var t = typeOf(s.division, s.type);
@@ -94,6 +114,7 @@
 
   function addSite(o) {
     var s = { id: uid(), name: o.name || '이름 없는 조사구', addr: o.addr || '', lat: +o.lat, lng: +o.lng, memo: o.memo || '',
+      josaguNo: o.josaguNo || '', floor: o.floor || '', card: o.card || '', kind: o.kind || '',
       division: o.division || null, type: o.type || null, crop: o.crop || null, region: o.region || null, createdAt: nowIso(), updatedAt: nowIso() };
     db.sites.push(s); persist();
     if (!s.region || s.region.status !== 'ok' && s.region.status !== 'manual') fillRegion(s);
@@ -162,15 +183,37 @@
 
   /* ───────── 조사구 핀 (HTML 마커 = 레이어보다 항상 위) ───────── */
   var markers = {};
-  function visibleSites() { return db.sites.filter(function (s) { return !activeDiv || (activeDiv === '_none' ? !s.division : s.division === activeDiv); }); }
+  var mapFilter = null;   /* 목록에서 「지도에서 보기」로 고른 조건 (분야·유형·작물·드롭다운) */
+  function visibleSites() {
+    if (mapFilter) return filterSites(mapFilter);
+    return db.sites.filter(function (s) { return !activeDiv || (activeDiv === '_none' ? !s.division : s.division === activeDiv); });
+  }
+  /* 핀 안 번호: 같은 분야·조사 유형·작물·읍면동 안에서 조사구번호(숫자 순) → 등록 순 */
+  function natCmp(a, b) { return String(a || '').localeCompare(String(b || ''), 'ko', { numeric: true }); }
+  function seqMap() {
+    var g = {}, out = {};
+    db.sites.forEach(function (s) {
+      var r = s.region || {};
+      var k = [s.division || '_', s.type || '_', s.crop || '_', r.status === 'ok' ? (r.sido + r.sigungu + r.emd) : '?'].join('|');
+      (g[k] = g[k] || []).push(s);
+    });
+    Object.keys(g).forEach(function (k) {
+      g[k].sort(function (a, b) { return natCmp(a.josaguNo, b.josaguNo) || natCmp(a.createdAt, b.createdAt); }).forEach(function (s, i) { out[s.id] = i + 1; });
+    });
+    return out;
+  }
+  var seqCache = {};
   function renderMarkers() {
     Object.keys(markers).forEach(function (id) { markers[id].remove(); });
     markers = {};
+    seqCache = seqMap();
     visibleSites().forEach(function (s) {
       if (!isFinite(s.lat) || !isFinite(s.lng)) return;
-      var ord = todayOrderOf(s.id), el = document.createElement('div');
+      var ord = todayOrderOf(s.id), el = document.createElement('div'), ps = pinStyleOf(s.division), lb = labelText(s);
       el.className = 'pin-wrap';
-      el.innerHTML = '<div class="pin' + (ord ? ' today' : '') + (ord && visitedToday(s.id) ? ' visited' : '') + '" style="' + (ord ? '' : 'background:' + siteColor(s)) + '"><i>' + (ord || (s.crop ? esc(s.crop.charAt(0)) : '')) + '</i></div>';
+      el.innerHTML = '<div class="pin s-' + ps.shape + (ord ? ' today' : '') + (ord && visitedToday(s.id) ? ' visited' : '') + '" style="--pc:' + ps.color + '"><i>' + (seqCache[s.id] || '') + '</i></div>' +
+        (ord ? '<span class="pin-today">' + ord + '</span>' : '') +
+        (lb ? '<span class="pin-label">' + esc(lb) + '</span>' : '');
       el.title = s.name + ' · ' + siteLabel(s);
       el.addEventListener('click', function (ev) { ev.stopPropagation(); openSite(s.id); });
       var m = new maplibregl.Marker({ element: el, anchor: 'bottom', offset: [0, -2] }).setLngLat([s.lng, s.lat]).addTo(map);
@@ -213,12 +256,14 @@
       (first ? '' : '<p class="muted">기본 분야를 바꾸면 시작 화면과 오른쪽 기본 버튼만 바뀝니다. 이미 저장한 조사구의 분야는 조사구 수정에서 바꿉니다.</p>' +
         '<label class="fld">🚨 현장 안전 연락 — 기본 문자 수신 번호</label><input class="inp" id="pfSms" inputmode="tel" maxlength="20" placeholder="예: 010-1234-5678" value="' + esc((p.safety || {}).smsTo || '') + '">' +
         '<label class="fld">카카오톡 안전 연락방 이름</label><input class="inp" id="pfRoom" maxlength="30" placeholder="예: 고령 현장 안전방" value="' + esc((p.safety || {}).kakaoRoom || '') + '">' +
-        '<p class="muted">「나 조사하러 간다」에서 문자 받는 번호의 기본값과, 카톡 공유 때 고를 방 이름 안내에 씁니다. 보내기 전에 바꿀 수 있습니다.</p>') +
+        '<p class="muted">「나 조사하러 간다」에서 문자 받는 번호의 기본값과, 카톡 공유 때 고를 방 이름 안내에 씁니다. 보내기 전에 바꿀 수 있습니다.</p>' +
+        '<div class="row"><button class="btn full" id="pfPins" type="button">📍 업무별 핀 모양·색·이름표 설정</button></div>') +
       '<div class="row"><button class="btn primary full" id="pfSave" disabled>' + (first ? '저장하고 시작' : '저장') + '</button></div>',
       { lock: !!first });
     var nick = body.querySelector('#pfNick'), btn = body.querySelector('#pfSave');
     function check() { btn.disabled = !(nick.value.trim() && body.querySelector('input[name="pdiv"]:checked')); }
     nick.addEventListener('input', check);
+    var pinsBtn = body.querySelector('#pfPins'); if (pinsBtn) pinsBtn.addEventListener('click', openPinSettings);
     body.querySelectorAll('input[name="pdiv"]').forEach(function (r) { r.addEventListener('change', check); });
     check();
     btn.addEventListener('click', function () {
@@ -234,6 +279,43 @@
       if (first) openHome(d);
     });
   }
+
+  /* ───────── 업무별 핀 모양·색·이름표 ───────── */
+  function openPinSettings() {
+    if (!db.profile) return;
+    var ids = DIVISIONS.map(function (d) { return d.id; }).concat(['_none']);
+    var html = '<p class="muted">업무마다 핀의 모양·색과 핀 아래 이름표에 보일 항목을 고릅니다. 이름표는 지도를 확대(15 이상)하면 보입니다.</p>' +
+      ids.map(function (id) {
+        var d = divOf(id), ps = pinStyleOf(id), lf = labelFieldsOf(id);
+        return '<div class="ps-row" data-div="' + id + '">' +
+          '<div class="ps-head"><span class="ps-prev"><span class="pin-wrap demo"><span class="pin s-' + ps.shape + '" style="--pc:' + ps.color + '"><i>1</i></span></span></span><b>' + esc(d ? d.name : '미분류') + '</b>' +
+          '<input type="color" data-k="color" value="' + ps.color + '"><select data-k="shape">' + SHAPES.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === ps.shape ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
+          '<div class="ps-lab">이름표: ' + LABEL_FIELDS.map(function (x) { return '<label><input type="checkbox" data-l="' + x[0] + '"' + (lf.indexOf(x[0]) >= 0 ? ' checked' : '') + '> ' + x[1] + '</label>'; }).join('') + '</div></div>';
+      }).join('') +
+      '<div class="row"><button class="btn" id="psReset">기본값으로</button><button class="btn primary" id="psSave" style="flex:1">저장</button></div>';
+    var body = openSheet('📍 핀 모양·색·이름표', html);
+    body.querySelectorAll('.ps-row').forEach(function (row) {
+      function prev() { var p = row.querySelector('.ps-prev .pin'); p.className = 'pin s-' + row.querySelector('[data-k=shape]').value; p.style.setProperty('--pc', row.querySelector('[data-k=color]').value); }
+      row.querySelectorAll('[data-k]').forEach(function (x) { x.addEventListener('input', prev); x.addEventListener('change', prev); });
+    });
+    body.querySelector('#psReset').addEventListener('click', function () {
+      if (!confirm('모든 업무의 핀 모양·색·이름표를 기본값으로 되돌릴까요?')) return;
+      delete db.profile.pinStyle; delete db.profile.pinLabel; persist(); openPinSettings(); toast('기본값으로 되돌렸습니다');
+    });
+    body.querySelector('#psSave').addEventListener('click', function () {
+      var st = {}, lb = {};
+      body.querySelectorAll('.ps-row').forEach(function (row) {
+        var id = row.getAttribute('data-div');
+        st[id] = { color: row.querySelector('[data-k=color]').value, shape: row.querySelector('[data-k=shape]').value };
+        lb[id] = Array.prototype.map.call(row.querySelectorAll('[data-l]:checked'), function (c) { return c.getAttribute('data-l'); });
+      });
+      db.profile.pinStyle = st; db.profile.pinLabel = lb; db.profile.updatedAt = nowIso();
+      persist(); closeSheet(); toast('핀 설정을 저장했습니다');
+    });
+  }
+  /* 지도를 확대했을 때만 핀 이름표 표시 */
+  function labelZoom() { document.body.classList.toggle('pin-labels', map.getZoom() >= 15); }
+  map.on('zoomend', labelZoom); labelZoom();
 
   /* ───────── 업무 시작 화면 (나의 조사구 현황) ───────── */
   function countBy(divId, typeId, crop) {
@@ -309,7 +391,17 @@
     });
     var mb = box.querySelector('[data-more]'); if (mb) mb.addEventListener('click', function () { divMoreOpen = !divMoreOpen; renderDivBtns(); });
   }
-  function setActiveDiv(id) { activeDiv = id; renderMarkers(); renderDivBtns(); }
+  function setActiveDiv(id) { activeDiv = id; mapFilter = null; renderMarkers(); renderDivBtns(); }
+  /* 목록 조건 그대로 지도에 핀만 남기고, 그 핀이 다 보이게 축소 */
+  function showOnMap(o) {
+    var list = filterSites(o);
+    activeDiv = o.div; mapFilter = { div: o.div, type: o.type || null, crop: o.crop || null, f: o.f || {} };
+    renderMarkers(); renderDivBtns(); closeSheet();
+    if (!list.length) { toast('지도에 표시할 조사구가 없습니다'); return; }
+    fitSites(list);
+    var d = divOf(o.div), t = typeOf(o.div, o.type);
+    toast((t ? t.name : d ? d.name : '') + (o.crop ? ' ' + o.crop : '') + ' ' + list.length + '곳만 표시 · 분야 버튼을 다시 누르면 전체');
+  }
   window.addEventListener('resize', function () { renderDivBtns(); });
 
   /* ───────── 조사구 목록 (분야 › 유형 › 작물, 시도 › 시군구 › 읍면동 › 리) ───────── */
@@ -337,8 +429,9 @@
   }
   function siteRow(s) {
     var ord = todayOrderOf(s.id);
-    return '<button class="plist-item" data-id="' + s.id + '"><span class="num" style="background:' + (ord ? 'var(--today)' : siteColor(s)) + '">' + (ord || '·') + '</span>' +
-      '<span class="t"><b>' + esc(s.name) + '</b><span>' + esc(siteLabel(s)) + (s.memo ? ' · ' + esc(s.memo.slice(0, 24)) : '') + '</span></span>' +
+    var extra = [s.josaguNo ? '조사구 ' + s.josaguNo : '', floorCard(s) ? '층-카드 ' + floorCard(s) : '', s.kind || ''].filter(Boolean).join(' · ');
+    return '<button class="plist-item" data-id="' + s.id + '"><span class="num" style="background:' + siteColor(s) + '">' + (seqCache[s.id] || seqMap()[s.id] || '·') + '</span>' +
+      '<span class="t"><b>' + esc(s.name) + (ord ? ' <span class="chip today">오늘 ' + ord + '</span>' : '') + '</b><span>' + esc(siteLabel(s)) + (extra ? ' · ' + esc(extra) : '') + (s.memo ? ' · ' + esc(s.memo.slice(0, 24)) : '') + '</span></span>' +
       (visitedToday(s.id) ? '<span class="chip done">오늘 방문</span>' : '') + '</button>';
   }
   function treeHtml(list) {
@@ -370,12 +463,44 @@
     return h;
   }
   function filterSites(o) {
+    var f = o.f || {};
     return db.sites.filter(function (s) {
       if (o.div && s.division !== o.div) return false;
       if (o.type && s.type !== o.type) return false;
       if (o.crop && s.crop !== o.crop) return false;
+      var r = s.region && s.region.status === 'ok' ? s.region : {};
+      if (f.sido && r.sido !== f.sido) return false;
+      if (f.sigungu && r.sigungu !== f.sigungu) return false;
+      if (f.emd && r.emd !== f.emd) return false;
+      if (f.floor && String(s.floor || '') !== f.floor) return false;
+      if (f.josaguNo && String(s.josaguNo || '') !== f.josaguNo) return false;
+      if (f.kind && s.kind !== f.kind) return false;
       return true;
     });
+  }
+  /* 드롭다운: 시도 › 시군구 › 읍면동 + 작물·층·조사구·구분 (값이 있는 것만) */
+  function filterBar(o) {
+    var f = o.f || {};
+    var base = filterSites({ div: o.div, type: o.type });
+    function uniq(fn, within) { var m = {}; (within || base).forEach(function (s) { var v = fn(s); if (v) m[v] = (m[v] || 0) + 1; }); return Object.keys(m).sort(natCmp).map(function (k) { return [k, m[k]]; }); }
+    function reg(s) { return s.region && s.region.status === 'ok' ? s.region : {}; }
+    var inSido = base.filter(function (s) { return !f.sido || reg(s).sido === f.sido; });
+    var inSgg = inSido.filter(function (s) { return !f.sigungu || reg(s).sigungu === f.sigungu; });
+    function sel(key, label, opts, always) {
+      if (!always && !opts.length) return '';
+      return '<label class="flt"><span>' + label + '</span><select data-f="' + key + '"><option value="">전체</option>' +
+        opts.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (String(f[key] || (key === 'crop' ? o.crop || '' : '')) === x[0] ? ' selected' : '') + '>' + esc(x[0]) + ' (' + x[1] + ')</option>'; }).join('') + '</select></label>';
+    }
+    var t = typeOf(o.div, o.type);
+    return '<div class="flt-bar">' +
+      sel('sido', '시도', uniq(function (s) { return reg(s).sido; }), true) +
+      sel('sigungu', '시군구', uniq(function (s) { return reg(s).sigungu; }, inSido), true) +
+      sel('emd', '읍면동', uniq(function (s) { return reg(s).emd; }, inSgg), true) +
+      (t && t.crops ? sel('crop', '작물', uniq(function (s) { return s.crop; })) : '') +
+      sel('floor', '층', uniq(function (s) { return s.floor ? String(s.floor) : ''; })) +
+      sel('josaguNo', '조사구', uniq(function (s) { return s.josaguNo ? String(s.josaguNo) : ''; })) +
+      sel('kind', '구분', uniq(function (s) { return s.kind; })) +
+      '</div>';
   }
   function openList(o) {
     o = o || {};
@@ -385,18 +510,30 @@
     var html = '<div class="tabs scroll"><button class="tab' + (!o.type ? ' on' : '') + '" data-t="">전체 ' + countBy(d.id) + '</button>' +
       d.types.map(function (t) { var n = countBy(d.id, t.id); return '<button class="tab' + (o.type === t.id ? ' on' : '') + (n ? '' : ' zero') + '" data-t="' + t.id + '">' + esc(t.name) + ' ' + n + '</button>'; }).join('') + '</div>';
     var t = typeOf(d.id, o.type);
-    if (t && t.crops) {
-      html += '<div class="tabs scroll crops"><button class="tab' + (!o.crop ? ' on' : '') + '" data-c="">작물 전체 ' + countBy(d.id, t.id) + '</button>' +
-        t.crops.map(function (c) { var n = countBy(d.id, t.id, c); return '<button class="tab' + (o.crop === c ? ' on' : '') + (n ? '' : ' zero') + '" data-c="' + esc(c) + '">' + esc(c) + ' ' + n + '</button>'; }).join('') + '</div>';
-    }
+    html += '<p class="muted tab-hint">고른 업무 탭을 한 번 더 누르면 그 업무 핀만 지도에 모아 보여 줍니다.</p>';
+    html += filterBar(o);
     html += list.length ? treeHtml(list) : '<p class="muted">이 조건의 조사구가 없습니다. 지도를 길게 누르거나 검색해서 조사구를 등록하세요.</p>';
     html += '<div class="row"><button class="btn" id="lsMap" style="flex:1">이 목록 지도에서 보기 (' + list.length + ')</button><button class="btn" id="lsHome">현황</button></div>';
     var title = d.name + (t ? ' › ' + t.name : '') + (o.crop ? ' › ' + o.crop : '');
     var body = openSheet(title, html);
-    body.querySelectorAll('[data-t]').forEach(function (b) { b.addEventListener('click', function () { openList({ div: d.id, type: b.getAttribute('data-t') || null }); }); });
-    body.querySelectorAll('[data-c]').forEach(function (b) { b.addEventListener('click', function () { openList({ div: d.id, type: o.type, crop: b.getAttribute('data-c') || null }); }); });
+    body.querySelectorAll('[data-t]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var nt = b.getAttribute('data-t') || null;
+        if (nt === (o.type || null)) { showOnMap(o); return; }   /* 이미 고른 업무를 한 번 더 누르면 지도에서 보기 */
+        openList({ div: d.id, type: nt });
+      });
+    });
+    body.querySelectorAll('select[data-f]').forEach(function (sl) {
+      sl.addEventListener('change', function () {
+        var k = sl.getAttribute('data-f'), nf = Object.assign({}, o.f || {}), crop = o.crop;
+        if (k === 'crop') crop = sl.value || null; else nf[k] = sl.value || '';
+        if (k === 'sido') { nf.sigungu = ''; nf.emd = ''; }
+        if (k === 'sigungu') nf.emd = '';
+        openList({ div: d.id, type: o.type, crop: crop, f: nf });
+      });
+    });
     bindRows(body);
-    body.querySelector('#lsMap').addEventListener('click', function () { setActiveDiv(d.id); closeSheet(); fitSites(list); });
+    body.querySelector('#lsMap').addEventListener('click', function () { showOnMap(o); });
     body.querySelector('#lsHome').addEventListener('click', function () { openHome(d.id); });
     var rr = body.querySelector('#reRegion'); if (rr) rr.addEventListener('click', function () { refillRegions(true); toast('지역을 다시 확인합니다'); });
   }
@@ -491,6 +628,12 @@
     var lp = lastPick[dv] || {};
     var html = classifyFields(dv, s.type || lp.type, s.crop || lp.crop) +
       '<label class="fld">조사구 이름</label><input class="inp" id="fName" value="' + esc(s.name || (o.kind === '장소' ? o.name : '') || '') + '" placeholder="예: 다산 101 조사구">' +
+      '<div class="f-grid">' +
+        '<label><span>조사구번호</span><input class="inp" id="fNo" value="' + esc(s.josaguNo || '') + '" placeholder="예: 101"></label>' +
+        '<label><span>층</span><input class="inp" id="fFloor" inputmode="numeric" value="' + esc(s.floor || '') + '" placeholder="예: 2"></label>' +
+        '<label><span>카드</span><input class="inp" id="fCard" value="' + esc(s.card || '') + '" placeholder="예: 3"></label>' +
+        '<label><span>구분</span><select class="inp" id="fKind"><option value="">선택 안 함</option>' + KINDS.map(function (k) { return '<option' + (s.kind === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select></label>' +
+      '</div>' +
       '<div class="addr">' + esc((s.addr || o.addr) || ((s.lat || o.lat).toFixed(5) + ', ' + (s.lng || o.lng).toFixed(5))) + '</div>' +
       (existing ? '<label class="fld">지역 (법정동)</label><div class="reg-line">' + regionText(s) + ' <button class="btn sm" id="fReg">다시 확인</button></div>' : '<p class="muted">지역(시도·시군구·읍면동·리)은 저장할 때 법정동 기준으로 자동 확인합니다.</p>') +
       '<label class="fld">메모</label><textarea id="fMemo" placeholder="조사 대상 개인정보 없이 현장 메모만 (이 기기에 암호화 저장)">' + esc(s.memo || '') + '</textarea>' +
@@ -500,12 +643,13 @@
     var rb = body.querySelector('#fReg'); if (rb) rb.addEventListener('click', function () { fillRegion(s, true).then(function () { openSiteForm(o, s); }); });
     body.querySelector('#fSave').addEventListener('click', function () {
       var v = get(), name = body.querySelector('#fName').value.trim(), memo = body.querySelector('#fMemo').value;
+      var more = { josaguNo: body.querySelector('#fNo').value.trim(), floor: body.querySelector('#fFloor').value.trim(), card: body.querySelector('#fCard').value.trim(), kind: body.querySelector('#fKind').value };
       lastPick[v.division] = { type: v.type, crop: v.crop };
       if (existing) {
-        s.division = v.division; s.type = v.type; s.crop = v.crop; s.name = name || s.name; s.memo = memo; touch(s);
+        s.division = v.division; s.type = v.type; s.crop = v.crop; s.name = name || s.name; s.memo = memo; Object.assign(s, more); touch(s);
         persist(); toast('저장했습니다'); openSite(s.id);
       } else {
-        var ns = addSite({ name: name || o.name || '이름 없는 조사구', addr: o.addr, lat: o.lat, lng: o.lng, memo: memo, division: v.division, type: v.type, crop: v.crop, region: { status: 'pending' } });
+        var ns = addSite(Object.assign({ name: name || o.name || '이름 없는 조사구', addr: o.addr, lat: o.lat, lng: o.lng, memo: memo, division: v.division, type: v.type, crop: v.crop, region: { status: 'pending' } }, more));
         clearTemp(); toast('저장했습니다'); openSite(ns.id);
       }
     });
@@ -572,6 +716,7 @@
       '<div class="site-cls" style="--c:' + siteColor(s) + '">' + esc(siteLabel(s)) + (s.division ? '' : ' <button class="btn sm" data-act="cls">분야 지정</button>') + '</div>' +
       '<div class="addr">' + esc(s.addr || (s.lat.toFixed(5) + ', ' + s.lng.toFixed(5))) + '</div>' +
       '<div class="reg-line">' + regionText(s) + (s.region && s.region.status === 'ok' ? ' <small class="muted">(법정동)</small>' : '') + '</div>' +
+      (s.josaguNo || floorCard(s) || s.kind ? '<div class="site-extra">' + [s.josaguNo ? '조사구번호 <b>' + esc(s.josaguNo) + '</b>' : '', floorCard(s) ? '층-카드 <b>' + esc(floorCard(s)) + '</b>' : '', s.kind ? '구분 <b>' + esc(s.kind) + '</b>' : ''].filter(Boolean).join(' · ') + '</div>' : '') +
       '<div>' + (ord ? '<span class="chip today">오늘 방문 ' + ord + '번</span>' : '') + (visitedToday(s.id) ? '<span class="chip done">오늘 방문함</span>' : '') + '</div>' +
       '<div class="row">' +
         '<button class="btn primary" data-act="nav">🚗 길찾기</button>' +
@@ -723,7 +868,7 @@
   function localSearch(q) {
     var k = q.toLowerCase();
     return db.sites.filter(function (s) {
-      return (s.name + ' ' + s.addr + ' ' + (s.memo || '') + ' ' + siteLabel(s) + ' ' + (s.region ? [s.region.sigungu, s.region.emd, s.region.ri].join(' ') : '')).toLowerCase().indexOf(k) >= 0;
+      return (s.name + ' ' + s.addr + ' ' + (s.memo || '') + ' ' + siteLabel(s) + ' ' + (s.josaguNo || '') + ' ' + (s.kind || '') + ' ' + (s.region ? [s.region.sigungu, s.region.emd, s.region.ri].join(' ') : '')).toLowerCase().indexOf(k) >= 0;
     }).slice(0, 8);
   }
   $('searchForm').addEventListener('submit', function (e) {
@@ -822,19 +967,78 @@
   }
 
   /* ───────── 내 위치 ───────── */
-  var meMarker = null;
+  /* 텐아르처럼 3단: ① 현재 위치로 이동·따라가기 → ② 방향(나침반) 따라 지도 회전 → ③ 해제 */
+  var meMarker = null, locMode = 0, locWatch = null, lastMe = null, heading = null, headRaf = 0, firstFix = false;
+  function meEl() {
+    var el = document.createElement('div'); el.className = 'me-wrap';
+    el.innerHTML = '<span class="me-cone"></span><span class="me-dot"></span>';
+    return el;
+  }
+  function setLocBtn() {
+    var b = $('btnLocate');
+    b.classList.toggle('on', locMode > 0);
+    b.classList.toggle('heading', locMode === 2);
+    b.querySelector('small').textContent = locMode === 0 ? '내 위치' : locMode === 1 ? '따라가기' : '방향';
+  }
+  function onFix(pos) {
+    var ll = [pos.coords.longitude, pos.coords.latitude];
+    lastMe = ll;
+    if (!meMarker) meMarker = new maplibregl.Marker({ element: meEl(), rotationAlignment: 'map' }).setLngLat(ll).addTo(map);
+    else meMarker.setLngLat(ll);
+    if (!firstFix) { firstFix = true; map.flyTo({ center: ll, zoom: Math.max(map.getZoom(), 16) }); }
+    else if (locMode >= 1) map.easeTo({ center: ll, duration: 400 });
+  }
+  function onHeading(e) {
+    var h = null;
+    if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;              /* iPhone */
+    else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;          /* 안드로이드 */
+    if (h == null || isNaN(h)) return;
+    heading = h;
+    if (headRaf) return;
+    headRaf = setTimeout(function () {   /* 너무 잦은 회전을 줄임(약 15회/초) */
+      headRaf = 0;
+      if (locMode !== 2) return;
+      map.jumpTo({ bearing: heading, center: lastMe || map.getCenter() });
+      if (meMarker) meMarker.getElement().classList.add('has-heading');
+    }, 66);
+  }
+  function startHeading() {
+    function listen() {
+      window.addEventListener('deviceorientationabsolute', onHeading, true);
+      window.addEventListener('deviceorientation', onHeading, true);
+      setTimeout(function () { if (locMode === 2 && heading == null) toast('이 기기에서는 방향(나침반)을 읽지 못했습니다'); }, 3000);
+    }
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(function (r) { if (r === 'granted') listen(); else toast('방향 권한이 허용되지 않았습니다'); }, function () { toast('방향 권한을 요청하지 못했습니다'); });
+    } else listen();
+  }
+  function stopHeading() {
+    window.removeEventListener('deviceorientationabsolute', onHeading, true);
+    window.removeEventListener('deviceorientation', onHeading, true);
+    heading = null;
+    if (meMarker) meMarker.getElement().classList.remove('has-heading');
+  }
+  function stopLocate() {
+    if (locWatch != null) { navigator.geolocation.clearWatch(locWatch); locWatch = null; }
+    stopHeading();
+    if (meMarker) { meMarker.remove(); meMarker = null; }
+    firstFix = false; locMode = 0; setLocBtn();
+    map.easeTo({ bearing: 0, duration: 500 });
+  }
   $('btnLocate').addEventListener('click', function () {
     if (!navigator.geolocation) { toast('이 기기에서는 위치를 확인할 수 없습니다'); return; }
-    toast('현재 위치를 찾는 중…');
-    navigator.geolocation.getCurrentPosition(function (pos) {
-      var ll = [pos.coords.longitude, pos.coords.latitude];
-      if (!meMarker) { var el = document.createElement('div'); el.className = 'me-dot'; meMarker = new maplibregl.Marker({ element: el }).setLngLat(ll).addTo(map); }
-      else meMarker.setLngLat(ll);
-      map.flyTo({ center: ll, zoom: Math.max(map.getZoom(), 16) });
-    }, function (err) {
-      toast(err && err.code === 1 ? '위치 권한이 꺼져 있습니다. 브라우저 설정에서 허용해 주세요.' : '현재 위치를 찾지 못했습니다');
-    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+    if (locMode === 0) {
+      locMode = 1; setLocBtn(); toast('현재 위치를 찾는 중… (한 번 더 누르면 방향 모드)');
+      locWatch = navigator.geolocation.watchPosition(onFix, function (err) {
+        toast(err && err.code === 1 ? '위치 권한이 꺼져 있습니다. 브라우저 설정에서 허용해 주세요.' : '현재 위치를 찾지 못했습니다');
+        if (err && err.code === 1) stopLocate();
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 });
+    } else if (locMode === 1) {
+      locMode = 2; setLocBtn(); startHeading(); toast('방향 모드 · 한 번 더 누르면 해제');
+    } else { stopLocate(); toast('내 위치 표시를 껐습니다'); }
   });
+  /* 손으로 지도를 돌리거나 끌면 방향 모드만 풀고 위치 표시는 유지 */
+  map.on('dragstart', function () { if (locMode === 2) { locMode = 1; stopHeading(); setLocBtn(); } });
 
   /* ───────── 주변정보 패널 (nearby.js) ───────── */
   $('btnNearby').addEventListener('click', function () {
@@ -973,6 +1177,7 @@
       var wrap = document.createElement('div');
       wrap.innerHTML = '<span class="pub-tag">공유받은 위치</span><br><b>' + esc(o.name) + '</b><div class="pop-addr">' + o.lat.toFixed(5) + ', ' + o.lng.toFixed(5) + '</div>' +
         '<a class="btn full" href="' + esc(o.kakao) + '" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;margin-bottom:6px">카카오맵에서 열기</a>' +
+        (o.naver ? '<a class="btn full" href="' + esc(o.naver) + '" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;margin-bottom:6px">네이버지도에서 열기</a>' : '') +
         '<button class="btn primary full" data-n>🚗 길찾기</button>';
       new maplibregl.Popup({ offset: 40, closeOnClick: false, maxWidth: '260px' }).setLngLat([o.lng, o.lat]).setDOMContent(wrap).addTo(map);
       wrap.querySelector('[data-n]').addEventListener('click', function () { openNav(o.name, o.lat, o.lng); });
@@ -984,6 +1189,7 @@
   window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
     ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
     getProfile: function () { return db.profile; },
+    setSafety: function (o) { if (!db.profile) return; db.profile.safety = Object.assign({}, db.profile.safety || {}, o); db.profile.updatedAt = nowIso(); persist(); },
     pinsForAlt: function () {
       return visibleSites().filter(function (s) { return isFinite(s.lat) && isFinite(s.lng); }).map(function (s) {
         return { id: s.id, name: s.name, lat: s.lat, lng: s.lng, order: todayOrderOf(s.id), sel: s.id === selectedId };

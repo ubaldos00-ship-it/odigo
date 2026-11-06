@@ -1,4 +1,4 @@
-/* 어디고 v2.8 — 「나 조사하러 간다」 현장 안전 연락 (설계: 설계/v2.4 10장)
+/* 어디고 v2.8 — 「나 조사하러 간다」 (v2.9: 네이버지도 링크 추가·문자 번호 기억) 현장 안전 연락 (설계: 설계/v2.4 10장)
    · 누를 때 GPS를 한 번만 조회 → 미리보기(현재 위치·GPS 시각·정확도·조사 목적지, 각각 지도 링크)
    · 보내기: 카카오톡 공유(공식 JS SDK, 사용자가 방을 고름) · 문자 작성 화면(기본 번호) · 문구 복사
      실제 전송은 카톡·문자 앱에서 사용자가 누름. 어디고는 위치를 서버로 보내지 않음
@@ -28,6 +28,8 @@
     return /[0-9]$/.test(w) ? (/[036]$/.test(w) ? '으로' : '로') : '(으)로';
   }
   function kakaoMapLink(name, lat, lng) { return 'https://map.kakao.com/link/map/' + encodeURIComponent(clean(name) || '위치') + ',' + lat.toFixed(5) + ',' + lng.toFixed(5); }
+  /* 네이버지도: 네이버가 스스로 /p/?title=&lng=&lat= 로 바꿔 주는 형식 (2026-11-07 확인) */
+  function naverMapLink(name, lat, lng) { return 'https://map.naver.com/?lng=' + lng.toFixed(5) + '&lat=' + lat.toFixed(5) + '&title=' + encodeURIComponent(clean(name) || '위치'); }
   function odigoPinLink(name, lat, lng) { return ODIGO_URL + '?pin=' + lat.toFixed(6) + ',' + lng.toFixed(6) + '&n=' + encodeURIComponent(clean(name).slice(0, 40)); }
 
   var lastFix = null;   /* 마지막으로 확인한 내 위치 (이 화면을 연 동안만, 저장하지 않음) */
@@ -50,10 +52,14 @@
     if (t) L.push(clean(t.name) + ro(clean(t.name)) + ' 조사하러 갑니다.');
     else L.push('현장 조사 중입니다. 현재 위치를 알립니다.');
     if (me) {
-      L.push('현재 내 위치' + (me.last ? '(마지막 확인 위치)' : '') + (forKakao ? '' : ' · ' + kakaoMapLink('내 위치', me.lat, me.lng)));
+      L.push('현재 내 위치' + (me.last ? '(마지막 확인 위치)' : ''));
+      if (!forKakao) { L.push('· 카카오맵 ' + kakaoMapLink('내 위치', me.lat, me.lng)); L.push('· 네이버지도 ' + naverMapLink('내 위치', me.lat, me.lng)); }
       L.push('GPS 확인 · ' + hm(me.at) + ' / 정확도 약 ±' + Math.round(me.acc) + 'm');
     } else if (st.meNote) L.push('현재 내 위치 · ' + st.meNote);
-    if (t) L.push('조사 목적지 · ' + clean(t.name) + (forKakao ? '' : ' ' + kakaoMapLink(t.name, t.lat, t.lng)));
+    if (t) {
+      L.push('조사 목적지 · ' + clean(t.name));
+      if (!forKakao) { L.push('· 카카오맵 ' + kakaoMapLink(t.name, t.lat, t.lng)); L.push('· 네이버지도 ' + naverMapLink(t.name, t.lat, t.lng)); }
+    }
     return L.join('\n');
   }
 
@@ -92,7 +98,7 @@
     else if (c.me) {
       meHtml = '<div class="sf-loc"><b>' + esc(c.meAddr || (c.me.lat.toFixed(5) + ', ' + c.me.lng.toFixed(5))) + '</b>' +
         '<small>GPS ' + hm(c.me.at) + ' · 정확도 약 ±' + Math.round(c.me.acc) + 'm' + (c.me.last ? ' · 마지막 확인 위치' : '') + '</small>' +
-        '<a href="' + kakaoMapLink('내 위치', c.me.lat, c.me.lng) + '" target="_blank" rel="noopener">지도 링크 열어 보기</a></div>' +
+        '<span class="sf-links"><a href="' + kakaoMapLink('내 위치', c.me.lat, c.me.lng) + '" target="_blank" rel="noopener">카카오맵</a> · <a href="' + naverMapLink('내 위치', c.me.lat, c.me.lng) + '" target="_blank" rel="noopener">네이버지도</a></span></div>' +
         (c.gpsErr === 'lowacc' ? '<p class="warn">정확도가 약 ±' + Math.round(c.me.acc) + 'm로 낮습니다. 그대로 보내거나 다시 조회하세요.</p>' : '');
     } else {
       meHtml = '<p class="warn">' + esc(GPS_MSG[c.gpsErr] || GPS_MSG.fail) + '</p>' +
@@ -105,7 +111,7 @@
       '<label class="fld">현재 내 위치 <button class="btn sm" data-a="relocate">다시 조회</button></label>' + meHtml +
       '<label class="fld">조사 목적지</label>' +
       (t ? '<div class="sf-loc"><b>' + esc(t.name) + '</b><small>' + esc(t.addr || (t.lat.toFixed(5) + ', ' + t.lng.toFixed(5))) + '</small>' +
-        '<a href="' + kakaoMapLink(t.name, t.lat, t.lng) + '" target="_blank" rel="noopener">지도 링크 열어 보기</a></div>'
+        '<span class="sf-links"><a href="' + kakaoMapLink(t.name, t.lat, t.lng) + '" target="_blank" rel="noopener">카카오맵</a> · <a href="' + naverMapLink(t.name, t.lat, t.lng) + '" target="_blank" rel="noopener">네이버지도</a></span></div>'
         : '<p class="muted">선택한 조사구가 없어 현재 위치만 보냅니다. <button class="btn sm" data-a="pickdest">조사구 고르기</button></p>') +
       '<label class="fld">보낼 문구 (고칠 수 있음)</label><textarea id="sfText" rows="7">' + esc(c.text) + '</textarea>' +
       (sf.kakaoRoom ? '<p class="sf-room">카카오톡에서 「<b>' + esc(sf.kakaoRoom) + '</b>」 방을 골라 주세요</p>' : '<p class="muted">내 설정에서 안전 연락방 이름을 정해 두면 여기에 안내합니다.</p>') +
@@ -113,6 +119,7 @@
         '<button class="btn sf-kakao" data-a="kakao"' + (phase === 'locating' ? ' disabled' : '') + '>💬 내 위치 카톡 보내기</button>' +
         '<div class="sf-sms"><button class="btn primary" data-a="sms"' + (phase === 'locating' ? ' disabled' : '') + '>✉ 위치 문자 보내기</button>' +
         '<input class="inp" id="sfTo" inputmode="tel" placeholder="받는 번호" value="' + esc(sf.smsTo || '') + '"></div>' +
+        '<p class="muted sf-tip">' + (sf.smsTo ? '받는 번호는 내 설정에 저장된 번호입니다. 여기서 바꿔 보내면 그 번호를 기억합니다.' : '번호를 한 번 넣고 보내면 기억해서 다음부터 자동으로 채웁니다.') + '</p>' +
         '<button class="btn" data-a="copy"' + (phase === 'locating' ? ' disabled' : '') + '>📋 문구 복사</button>' +
       '</div>' +
       '<p class="muted">위치는 어디고 서버로 보내지 않습니다. 카톡·문자 앱에서 내용을 확인하고 직접 전송하세요.</p>';
@@ -145,6 +152,9 @@
   function sendSms(c, to) {
     var num = String(to || '').replace(/[^\d+]/g, '');
     if (!num) { A().toast('받는 번호를 넣어 주세요'); return; }
+    /* 번호 기억 (다음부터 자동으로 채움) */
+    var sf = (A().getProfile() || {}).safety || {};
+    if (String(sf.smsTo || '').replace(/[^\d+]/g, '') !== num && A().setSafety) A().setSafety({ smsTo: String(to).trim() });
     /* 본문이 안 채워지는 기기를 대비해 먼저 복사해 둠 */
     copy(c.text).then(function () {
       var ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -194,7 +204,7 @@
     var m = pin.split(','), lat = parseFloat(m[0]), lng = parseFloat(m[1]);
     if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
     var name = (q.get('n') || '공유된 위치').slice(0, 40);
-    A().showSharedPin({ name: name, lat: lat, lng: lng, kakao: kakaoMapLink(name, lat, lng) });
+    A().showSharedPin({ name: name, lat: lat, lng: lng, kakao: kakaoMapLink(name, lat, lng), naver: naverMapLink(name, lat, lng) });
     try { history.replaceState(null, '', location.pathname); } catch (e) {}
   }
 

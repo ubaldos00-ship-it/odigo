@@ -361,3 +361,60 @@ select.inp { background: #fff; height: 44px; }
 .sf-sms .inp { flex: 0 0 42%; min-width: 0; }
 #sfText { font-size: 14px; min-height: 140px; }
 .pin.shared { background: #c92a2a; }
+
+/* ═════════ v2.9 핀 모양·색·번호·이름표 / 팝업 맨 위 / 필터 / 내 위치 ═════════ */
+/* 지도 팝업(길게 누르기 등)을 핀보다 위로 */
+.maplibregl-popup { z-index: 20; }
+.pin-wrap { position: relative; display: flex; flex-direction: column; align-items: center; }
+.pin { background: var(--pc, var(--place)); }
+.pin.today { width: 34px; height: 34px; background: var(--pc, var(--place)); border: 3px solid #fff; outline: 3px solid var(--today); }
+.pin.today i { font-size: 13px; }
+.pin.s-circle, .pin.s-square, .pin.s-triangle, .pin.s-star { transform: none; }
+.pin.s-circle { border-radius: 50%; }
+.pin.s-square { border-radius: 6px; }
+.pin.s-diamond { border-radius: 4px; transform: rotate(45deg); }
+.pin.s-circle i, .pin.s-square i, .pin.s-triangle i, .pin.s-star i { transform: none; }
+.pin.s-diamond i { transform: rotate(-45deg); }
+.pin.s-triangle { border: 0; border-radius: 0; width: 34px; height: 30px; clip-path: polygon(50% 0, 100% 100%, 0 100%); box-shadow: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
+.pin.s-triangle i { margin-top: 9px; }
+.pin.s-star { border: 0; border-radius: 0; width: 36px; height: 36px; clip-path: polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%); box-shadow: none; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
+.pin.s-star i { margin-top: 4px; font-size: 11px; }
+.pin.s-triangle.today, .pin.s-star.today { outline: 0; filter: drop-shadow(0 0 0 var(--today)) drop-shadow(0 0 3px var(--today)); }
+.pin-today { position: absolute; top: -8px; right: -10px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--today); color: #fff; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; padding: 0 4px; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.pin-label { display: none; margin-top: 2px; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; font-weight: 800; color: #19352e; background: rgba(255,255,255,.9); border-radius: 6px; padding: 1px 6px; box-shadow: 0 1px 3px rgba(0,0,0,.25); pointer-events: none; }
+body.pin-labels .pin-label { display: block; }
+.pin-wrap.demo { display: inline-flex; padding: 0; transform: scale(.8); }
+
+/* 핀 설정 */
+.ps-row { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.ps-head { display: flex; align-items: center; gap: 8px; }
+.ps-head b { flex: 1; font-size: 14px; }
+.ps-head input[type=color] { width: 40px; height: 32px; border: 1px solid var(--line); border-radius: 6px; padding: 0; background: none; }
+.ps-head select { height: 32px; border: 1px solid var(--line); border-radius: 6px; }
+.ps-prev { width: 40px; display: flex; justify-content: center; }
+.ps-lab { font-size: 12.5px; color: var(--soft); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+
+/* 조사구 입력 */
+.f-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-top: 8px; }
+.f-grid label span { display: block; font-size: 12.5px; color: var(--soft); margin-bottom: 3px; }
+.site-extra { font-size: 13px; color: #4d5a55; margin-bottom: 4px; }
+
+/* 목록 드롭다운 필터 */
+.flt-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 8px; }
+.flt span { display: block; font-size: 11.5px; color: var(--soft); }
+.flt select { width: 100%; height: 34px; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; font-size: 13px; padding: 0 4px; }
+
+/* 안전 연락 링크 */
+.sf-links { font-size: 12.5px; }
+.sf-tip { margin: 2px 0 0; font-size: 12px; }
+
+/* 내 위치 3단 */
+.me-wrap { position: relative; width: 18px; height: 18px; }
+.me-wrap .me-dot { position: absolute; inset: 0; }
+.me-cone { display: none; position: absolute; left: 50%; top: 50%; width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-bottom: 34px solid rgba(28,126,214,.35); transform: translate(-50%, -100%); transform-origin: 50% 100%; }
+.me-wrap.has-heading .me-cone { display: block; }
+#btnLocate.on { background: #e7f5ff; }
+#btnLocate.on small { color: #1c7ed6; font-weight: 700; }
+#btnLocate.heading { background: #1c7ed6; }
+#btnLocate.heading small { color: #fff; }
+.tab-hint { margin: -4px 0 6px; font-size: 11.5px; }
