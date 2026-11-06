@@ -1,4 +1,4 @@
-/* 어디고 v2.4 — 「레이어」 패널 (설계: 설계/v2.4/어디고맵_통합시나리오_설계_v2.4.md 6장)
+/* 어디고 v2.4 — 「레이어」 패널 (v2.5: 네이버 지도 키 교체) (설계: 설계/v2.4/어디고맵_통합시나리오_설계_v2.4.md 6장)
    · 지도 종류: 일반지도·항공영상(MapLibre 배경 전환) + 카카오·네이버(공식 SDK 대체 화면)
    · 중첩: 브이월드 데이터 API(JSONP → GeoJSON 벡터) — 텐아르 map_libre.html v195 OVERLAY_DEFS와 같은 자료·확대 기준
      (브이월드 WMS는 CORS 헤더가 없어 MapLibre 타일로 못 받음 → 텐아르와 같이 데이터 API 사용)
@@ -11,7 +11,7 @@
 
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var VWORLD_DOMAIN = 'ubaldos00-ship-it.github.io';   /* 호스트만 · 스킴 금지 (텐아르 실측) */
-  var NAVER_KEY_ID = 'w8m4oe36ev';                     /* 텐아르와 같은 네이버 지도 키(ncpKeyId) */
+  var NAVER_KEY_ID = 'l300nz0ugi';   /* v2.5: 텐아르와 같은 NCP Maps 「map」 Client ID (Dynamic Map, github.io 등록). 이전 w8m4oe36ev는 인증 실패 */
   var SET_KEY = 'odigo_layers_v2';
 
   function A() { return window.OdigoApp; }
