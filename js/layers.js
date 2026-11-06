@@ -1,4 +1,4 @@
-/* 어디고 v2.4 — 「레이어」 패널 (v2.5: 네이버 지도 키 교체) (설계: 설계/v2.4/어디고맵_통합시나리오_설계_v2.4.md 6장)
+/* 어디고 v2.4 — 「레이어」 패널 (v2.5: 네이버 지도 키 교체 · v2.6: 기본값 항공영상+하이브리드, 교통상황(ITS) 버튼) (설계: 설계/v2.4/어디고맵_통합시나리오_설계_v2.4.md 6장)
    · 지도 종류: 일반지도·항공영상(MapLibre 배경 전환) + 카카오·네이버(공식 SDK 대체 화면)
    · 중첩: 브이월드 데이터 API(JSONP → GeoJSON 벡터) — 텐아르 map_libre.html v195 OVERLAY_DEFS와 같은 자료·확대 기준
      (브이월드 WMS는 CORS 헤더가 없어 MapLibre 타일로 못 받음 → 텐아르와 같이 데이터 API 사용)
@@ -48,22 +48,29 @@
     { id: 'adname', ko: '행정지역명', mode: true,
       desc: '시도·시군구·읍면동·리 이름을 구역 가운데 표시(경계선을 꺼도 이름은 보임) · 읍면동 11·리 12 이상', src: '위 경계 자료' },
     { id: 'hybrid', ko: '하이브리드', wmts: true,
-      desc: '지명·도로 이름 겹치기 (항공영상과 함께 쓰면 좋음)', src: '브이월드 WMTS Hybrid' }
+      desc: '지명·도로 이름 겹치기 (항공영상과 함께 쓰면 좋음)', src: '브이월드 WMTS Hybrid' },
+    { id: 'traffic', ko: '교통상황 (ITS 실시간)', ext: true, color: '#2f9e44',
+      desc: '국가교통정보센터 실시간 속도로 원활·서행·정체 표시 · 확대 11 이상(시군도 14 이상) · 주변정보의 교통상황과 같은 버튼입니다. 도심의 짧은 구간은 신호 대기 때문에 한산할 때도 정체로 보일 수 있습니다.',
+      src: '국가교통정보센터(ITS)' }
   ];
   /* 지도에 그리는 순서(아래→위): 하이브리드는 배경 바로 위, 경계·용도 → 지적도가 가장 위 */
   var DRAW_ORDER = ['agripromo', 'landuse', 'lhblpn', 'terrain', 'landprice', 'adri', 'ademd', 'adsigg', 'adsido', 'cadastral'];
   function def(id) { for (var i = 0; i < DEFS.length; i++) if (DEFS[i].id === id) return DEFS[i]; return null; }
 
-  var DEFAULTS = { base: 'Base', ov: {}, cadT: 35, luT: 55, collapsed: false };
+  var DEFAULTS = { base: 'Sat', ov: { hybrid: true }, cadT: 35, luT: 55, collapsed: false };   /* v2.6: 기본 = 항공영상 + 하이브리드 */
   var st = load(SET_KEY, null);
   if (!st) {
     st = JSON.parse(JSON.stringify(DEFAULTS));
     /* v2.3에서 위성을 쓰던 사람은 위성+하이브리드(이전과 같은 화면)로 시작 */
-    if (load('odigo_base_v1', 'Base') === 'Sat') { st.base = 'Sat'; st.ov.hybrid = true; }
+    /* v2.3에서 일반지도를 쓰던 사람은 일반지도로 시작(화면이 갑자기 바뀌지 않게). 처음 온 사람은 기본값(항공영상+하이브리드) */
+    if (localStorage.getItem('odigo_base_v1') && load('odigo_base_v1', 'Base') === 'Base') { st.base = 'Base'; st.ov.hybrid = false; }
   }
   st.ov = st.ov || {};
   function persist() { save(SET_KEY, st); }
-  function on(id) { return !!st.ov[id]; }
+  function on(id) {
+    if (id === 'traffic') return !!(window.OdigoNearby && OdigoNearby.isOn && OdigoNearby.isOn('traffic'));
+    return !!st.ov[id];
+  }
 
   /* ───────── 색 (텐아르와 같은 기준) ───────── */
   function landuseColor(u) {
@@ -304,6 +311,11 @@
   }
   function setOverlay(id, v) {
     var d = def(id);
+    if (id === 'traffic') {
+      if (window.OdigoNearby && OdigoNearby.setTraffic) OdigoNearby.setTraffic(!!v).catch(function () { var i = document.querySelector('[data-ly="traffic"]'); if (i) i.checked = false; });
+      else A().toast('교통상황을 불러오지 못했습니다');
+      return;
+    }
     st.ov[id] = !!v; persist();
     if (id === 'hybrid') { if (map().getLayer('hybrid')) map().setLayoutProperty('hybrid', 'visibility', v ? 'visible' : 'none'); return; }
     if (id === 'landinfo') { if (!v) clearSel(); else if (map().getZoom() < 16) A().toast('지도를 더 확대(16 이상)한 뒤 필지를 눌러 주세요'); else A().toast('조회할 필지를 눌러 주세요'); return; }
@@ -411,7 +423,7 @@
       var extra = '';
       if (d.id === 'cadastral') extra = slider('cadT', '지적도 투명도', 0, 100, st.cadT);
       if (d.id === 'landuse') extra = slider('luT', '토지이용계획 투명도', 20, 70, st.luT);
-      return '<div class="ly-item' + (d.id === 'landinfo' || d.id === 'adname' ? ' sub' : '') + '">' +
+      return '<div class="ly-item' + (d.id === 'landinfo' || d.id === 'adname' ? ' sub' : '') + (d.ext ? ' ext' : '') + '">' +
         '<label class="ly-row"><span class="ly-sw" style="background:' + (d.color || (d.wmts ? '#495057' : '#1c7ed6')) + '"></span>' +
         '<span class="ly-txt"><b>' + esc(d.ko) + '</b><small>' + esc(d.desc) + '</small></span>' +
         '<span class="switch"><input type="checkbox" data-ly="' + d.id + '"' + (on(d.id) ? ' checked' : '') + '><span></span></span></label>' +
@@ -473,7 +485,8 @@
     if (!c) requestAnimationFrame(function () { $('lpBody').scrollTop = savedScroll; });
   }
   function resetAll() {
-    if (!window.confirm('레이어 설정을 기본값으로 되돌릴까요?\n(일반지도 · 중첩 레이어 모두 끄기 · 투명도 기본값)')) return;
+    if (!window.confirm('레이어 설정을 기본값으로 되돌릴까요?\n(항공영상 · 하이브리드 켜기 · 나머지 중첩 레이어 끄기 · 투명도 기본값)')) return;
+    if (on('traffic') && window.OdigoNearby) OdigoNearby.setTraffic(false);
     var keep = st.collapsed;
     st = JSON.parse(JSON.stringify(DEFAULTS)); st.collapsed = keep; persist();
     clearSel();

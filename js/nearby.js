@@ -5,6 +5,7 @@
    · v2.1: 교통 CCTV 영상 (ITS 실시간, 누를 때만 재생)
    · v2.2: 교통상황 (ITS 실시간 속도 + 표준노드링크 도로 모양)
    · v2.3: 치안·안전정보 지도 (생활안전지도 치안사고통계(전체) WMS)
+   · v2.6: 교통상황을 레이어 패널에서도 켜고 끌 수 있게 setTraffic·isOn 공개
    · v2.4: 치안 지도를 레이어 패널(layers.js)의 브이월드 중첩(경계·지적 등)보다 아래에 놓음
    · 연결 전 항목은 스위치 잠금·「준비 중」 — 임의 자료를 실제처럼 그리지 않는다.
    · 이 모듈이 실패해도 장소 저장·방문 기록(odigo.js)은 계속 동작하도록 분리. */
@@ -895,5 +896,12 @@
   }
   function anyOn() { return Object.keys(state).some(function (k) { return state[k]; }); }
 
-  window.OdigoNearby = { render: render, allOff: allOff, anyOn: anyOn, layers: LAYERS, parkingNear: parkingNear, parkingNearMe: parkingNearMe, crimeSheet: crimeSheet };
+  window.OdigoNearby = { render: render, allOff: allOff, anyOn: anyOn, layers: LAYERS, parkingNear: parkingNear, parkingNearMe: parkingNearMe, crimeSheet: crimeSheet,
+    /* v2.6: 레이어 패널(layers.js)의 「교통상황(ITS)」 버튼이 같은 상태를 씀 */
+    setTraffic: function (on) {
+      return setTraffic(on).then(function () {
+        if (on) app().toast(app().map.getZoom() < TRAFFIC_MIN_ZOOM ? '교통상황을 켰습니다 · 지도를 확대하면 보입니다' : '교통상황을 켰습니다');
+      });
+    },
+    isOn: function (id) { return !!state[id]; } };
 })();
