@@ -4,6 +4,7 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
    · v2.0: CCTV 설치 위치 (data/cctv/, 매주 자동 갱신)
    · v2.1: 교통 CCTV 영상 (ITS 실시간, 누를 때만 재생)
    · v2.2: 교통상황 (ITS 실시간 속도 + 표준노드링크 도로 모양)
+   · v2.3: 치안·안전정보 지도 (생활안전지도 치안사고통계(전체) WMS)
    · 나머지(CCTV·교통·교통영상·치안)는 연결 전이라 스위치 잠금·「준비 중」 — 임의 자료를 실제처럼 그리지 않는다.
    · 이 모듈이 실패해도 장소 저장·방문 기록(odigo.js)은 계속 동작하도록 분리. */
 (function () {
@@ -27,10 +28,10 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
       provider: '국가교통정보센터(ITS) · 고속도로·국도 CCTV',
       basis: '실시간 · 재생을 누를 때만 영상을 불러옵니다', status: 'live',
       note: '점검·장애로 영상이 나오지 않을 수 있으며, 목적지 전체를 비추지 않습니다.' },
-    { id: 'safety', ico: '!', color: '#7048e8', name: '치안·안전정보', stage: '지도 레이어 3차',
-      provider: '경찰청 범죄 발생 지역별 통계 (2025년, 시·군·구)',
-      basis: '시·군·구 통계 표는 지금 사용 가능 · 생활안전지도 지도 레이어는 3차', status: 'wait',
-      note: '통계를 표시한 것이며 개별 사건 발생 장소나 위험도가 아닙니다.' }
+    { id: 'safety', ico: '!', color: '#7048e8', name: '치안·안전정보', stage: '3차',
+      provider: '생활안전지도(행정안전부) · 경찰청 치안사고통계(전체)',
+      basis: '최근 3년 9대 범죄 발생을 경찰서·지구대·파출소별 5등급으로 표시 · 갱신 1년', status: 'live',
+      note: '표시 위치는 경찰관서이며, 개별 사건 발생 장소나 현재 위험도가 아닙니다.' }
   ];
 
   var state = {};   /* id → 켜짐 여부 */
@@ -111,10 +112,21 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
   }
 
   /* 지도 스타일이 다 읽힌 뒤에만 레이어를 추가 */
+  /* 지도 스타일이 바쁜 동안(처음 로딩·다른 레이어 추가 직후)에는 레이어를 추가할 수 없으므로 한가해질 때까지 기다림.
+     ('load'는 처음 한 번만 오므로, 이미 지난 경우를 위해 'idle'과 짧은 재확인을 함께 사용) */
   function styleReady() {
     var map = app().map;
-    if (map.isStyleLoaded()) return Promise.resolve();
-    return new Promise(function (res) { map.once('load', res); setTimeout(res, 5000); });
+    /* isStyleLoaded()는 타일까지 다 받아야 true라, 레이어 추가 가능 여부는 스타일 자체(_loaded)로 판단 */
+    function canAdd() { return (map.style && map.style._loaded) || map.isStyleLoaded(); }
+    if (canAdd()) return Promise.resolve();
+    return new Promise(function (res) {
+      var done = false;
+      function ok() { if (!done && canAdd()) { done = true; clearInterval(t); res(); } }
+      var t = setInterval(ok, 200);
+      map.once('idle', ok);
+      map.once('load', ok);
+      setTimeout(function () { if (!done) { done = true; clearInterval(t); res(); } }, 15000);
+    });
   }
 
   function setParkVisible(on) {
@@ -684,6 +696,40 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
     }).catch(function () { fail('영상 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.'); });
   }
 
+  /* ═════════════ 치안·안전정보 지도 — 생활안전지도 WMS 치안사고통계(전체) IF_0075 (v2.3) ═════════════
+     · 이미지(WMS)를 그대로 겹쳐 보기만 함 — 공공누리 4유형(출처표시·상업적 이용 금지·변경 금지): 색·기호를 바꾸지 않음
+     · 키는 생활안전지도에 사이트 주소를 등록해 발급받은 키(화면 노출 전제)
+     · 기본 불투명도 60%(투명도 40%), 사용자가 조절 */
+  var SAFEMAP_KEY = 'NBZPCVU2-NBZP-NBZP-NBZP-NBZPCVU2L2';
+  var SAFETY_MIN_ZOOM = 11, safetyAdded = false, safetyOpacity = 0.6;
+  function ensureSafetyLayer() {
+    var map = app().map;
+    if (safetyAdded) return;
+    safetyAdded = true;
+    map.addSource('nb-safety', { type: 'raster', tileSize: 512, minzoom: SAFETY_MIN_ZOOM,
+      tiles: ['https://www.safemap.go.kr/openapi2/IF_0075_WMS?serviceKey=' + encodeURIComponent(SAFEMAP_KEY) +
+        '&srs=EPSG:3857&bbox={bbox-epsg-3857}&format=image/png&width=512&height=512&transparent=TRUE'],
+      attribution: '치안정보 © <a href="https://www.safemap.go.kr" target="_blank" rel="noopener">생활안전지도</a>(행정안전부)·경찰청, 공공누리 4유형' });
+    /* 내 장소 핀(HTML)·아이콘·교통선보다 아래, 배경지도 바로 위 */
+    var before = ['nb-traffic-none', 'nb-traffic-line', 'nb-cctv-cluster', 'nb-parking-cluster', 'nb-vcam-cluster'].filter(function (id) { return map.getLayer(id); })[0];
+    map.addLayer({ id: 'nb-safety', type: 'raster', source: 'nb-safety', minzoom: SAFETY_MIN_ZOOM, paint: { 'raster-opacity': safetyOpacity } }, before);
+  }
+  function setSafety(on) {
+    state.safety = on;
+    var map = app().map;
+    if (!on) { if (map.getLayer('nb-safety')) map.setLayoutProperty('nb-safety', 'visibility', 'none'); return Promise.resolve(); }
+    return styleReady().then(function () {
+      ensureSafetyLayer();
+      map.setLayoutProperty('nb-safety', 'visibility', 'visible');
+      if (map.getZoom() < SAFETY_MIN_ZOOM) app().toast('지도를 더 확대하면 치안정보가 보입니다');
+    });
+  }
+  function setSafetyOpacity(v) {
+    safetyOpacity = v;
+    var map = app().map;
+    if (map.getLayer('nb-safety')) map.setPaintProperty('nb-safety', 'raster-opacity', v);
+  }
+
   /* ═════════════ 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 (v1.9) ═════════════
      · data/crime/crime.json (도구/build_crime.py) — 시군구별 연간 발생 건수, 키 불필요
      · 지도에 색칠·순위·자체 위험지표를 만들지 않고, 장소가 속한 시군구의 표만 보여 준다. */
@@ -776,7 +822,11 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
         (L.id === 'cctvLoc' ? '<div class="nb-legend"><span class="lg" style="background:#495057">◉</span>설치 위치 · 확대 ' + CCTV_MIN_ZOOM + ' 이상에서 표시 · 영상 없음</div>' : '') +
         (L.id === 'traffic' ? '<div class="nb-legend"><span class="tr-bar" style="background:#2f9e44"></span>원활 <span class="tr-bar" style="background:#f59f00"></span>서행 <span class="tr-bar" style="background:#e03131"></span>정체 <span class="tr-bar dash"></span>정보 없음 · 확대 ' + TRAFFIC_MIN_ZOOM + ' 이상 (시군도 ' + MINOR_MIN_ZOOM + ' 이상)</div>' : '') +
         (L.id === 'cctvVideo' ?'<div class="nb-legend"><span class="lg" style="background:#1c7ed6">▶</span>고속도로·국도 · 확대 ' + VCAM_MIN_ZOOM + ' 이상에서 표시</div>' : '') +
-        (L.id === 'safety' ? '<div class="row" style="margin:8px 0 0"><button class="btn" id="nbCrimeCenter">📊 지도 가운데 지역 범죄 통계</button></div>' : '') +
+        (L.id === 'safety' ? '<div class="nb-legend sf-legend">' + [1, 2, 3, 4, 5].map(function (g) {
+            return '<span><img src="https://www.safemap.go.kr/images/icon_new/security_' + (g * 2) + '.svg" alt="">' + g + '등급</span>'; }).join('') +
+            '<br>경찰청 요청으로 건수 대신 등급(Jenks 자연 분류)으로 제공 · 확대 ' + SAFETY_MIN_ZOOM + ' 이상</div>' +
+          '<label class="sf-op">투명도 <input type="range" id="nbSafetyOp" min="0" max="80" step="10" value="' + Math.round((1 - safetyOpacity) * 100) + '"> <span id="nbSafetyOpV">' + Math.round((1 - safetyOpacity) * 100) + '%</span></label>' +
+          '<div class="row" style="margin:8px 0 0"><button class="btn" id="nbCrimeCenter">📊 지도 가운데 지역 범죄 통계 (시·군·구)</button></div>' : '') +
         '</div>' +
         '<label class="switch" title="' + (wait ? '아직 연결되지 않았습니다' : '켜기/끄기') + '">' +
         '<input type="checkbox" data-nb="' + L.id + '"' + (state[L.id] ? ' checked' : '') + (wait ? ' disabled' : '') + '><span></span></label>' +
@@ -803,6 +853,8 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
           setParking(inp.checked).then(function () {
             if (inp.checked) app().toast(app().map.getZoom() < PARK_MIN_ZOOM ? '주차장을 켰습니다 · 지도를 확대하면 보입니다' : '주차장을 켰습니다');
           }).catch(function () { inp.checked = false; });
+        } else if (id === 'safety') {
+          setSafety(inp.checked).then(function () { if (inp.checked && app().map.getZoom() >= SAFETY_MIN_ZOOM) app().toast('치안정보를 켰습니다'); });
         } else if (id === 'traffic') {
           setTraffic(inp.checked).then(function () {
             if (inp.checked) app().toast(app().map.getZoom() < TRAFFIC_MIN_ZOOM ? '교통상황을 켰습니다 · 지도를 확대하면 보입니다' : '교통상황을 켰습니다');
@@ -820,6 +872,8 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
     });
     var me = body.querySelector('#nbParkMe');
     if (me) me.addEventListener('click', parkingNearMe);
+    var op = body.querySelector('#nbSafetyOp');
+    if (op) op.addEventListener('input', function () { body.querySelector('#nbSafetyOpV').textContent = op.value + '%'; setSafetyOpacity(1 - op.value / 100); });
     var cc = body.querySelector('#nbCrimeCenter');
     if (cc) cc.addEventListener('click', crimeAtCenter);
     body.querySelector('#nbAllOff').addEventListener('click', function () {
@@ -834,6 +888,7 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
     if (state.cctvLoc) setCctv(false);
     if (state.cctvVideo) setVcam(false);
     if (state.traffic) setTraffic(false);
+    if (state.safety) setSafety(false);
     Object.keys(state).forEach(function (k) { state[k] = false; });
   }
   function anyOn() { return Object.keys(state).some(function (k) { return state[k]; }); }

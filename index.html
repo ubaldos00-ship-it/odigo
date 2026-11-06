@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- 어디고 odigo v2.2 (2026-11-06) 교통상황(2차) — 국가교통정보센터 표준노드링크(2026-10-14) 중 ITS가 속도를 주는 367,261개 도로 모양을 data/links/major·minor 0.5° 격자(정수 차분 좌표)로 제공, 화면 범위 ITS 교통소통정보 실시간 조회 → 원활·서행·정체(어디고 기준: 고속 70/40, 그 외 30/15km/h)·정보 없음(15분 경과·속도 없음) 색 표시, 켜져 있고 화면이 보일 때만 2분 갱신, 도로 누르면 도로명·속도·관측시각. 생성: 도구/build_links.py -->
+<!-- 어디고 odigo v2.3 (2026-11-06) 치안·안전정보 지도(3차) — 생활안전지도 치안사고통계(전체) IF_0075 WMS를 그대로 겹쳐 표시(확대 11 이상, 기본 투명도 40% 조절 가능, 공식 5등급 아이콘 범례, 출처·공공누리 4유형 표시, 「경찰관서 위치·개별 사건 장소/현재 위험도 아님」 안내). 시·군·구 범죄 통계 표 버튼 유지 -->
+<!-- (이전) 어디고 odigo v2.2 (2026-11-06) 교통상황(2차) — 국가교통정보센터 표준노드링크(2026-10-14) 중 ITS가 속도를 주는 367,261개 도로 모양을 data/links/major·minor 0.5° 격자(정수 차분 좌표)로 제공, 화면 범위 ITS 교통소통정보 실시간 조회 → 원활·서행·정체(어디고 기준: 고속 70/40, 그 외 30/15km/h)·정보 없음(15분 경과·속도 없음) 색 표시, 켜져 있고 화면이 보일 때만 2분 갱신, 도로 누르면 도로명·속도·관측시각. 생성: 도구/build_links.py -->
 <!-- (이전) 어디고 odigo v2.1 (2026-11-06) 교통 CCTV 영상(2차) — 국가교통정보센터 ITS 고속도로·국도 실시간 CCTV를 화면 범위로 조회(확대 9 이상), 아이콘 → 팝업(도로·영상 제공 여부) → 「영상 보기」 누를 때만 새 주소 받아 https로 재생(Safari 기본, 그 외 hls.js 1.5.13), 창 닫기·레이어 끄기 시 재생·통신 중단. ※ ITS 키 화면 노출(도메인 제한 없음) — 추후 중계 서버로 이전 예정 -->
 <!-- (이전) 어디고 odigo v2.0 (2026-11-06) CCTV 설치 위치 연결 — 행정안전부 CCTV정보 조회서비스 전체를 좌표별로 묶어 data/cctv/ 0.05° 격자 정적 파일로 제공(키 불필요, 확대 14 이상). 주변정보 「CCTV 설치 위치」 켜기·묶음 표시·팝업(설치목적·대수·관리기관·기준일, 작동 여부·촬영 범위 단정 안 함, 영상 버튼 없음). 주차장·CCTV 자료는 GitHub Actions가 매주 자동 갱신(.github/workflows/odigo-data.yml + .github/scripts/odigo_data.py, 키는 GitHub Secrets) -->
 <!-- (이전) 어디고 odigo v1.9 (2026-11-06) 치안·안전정보 1단계 — 경찰청 범죄 발생 지역별 통계(2025년, 시·군·구 229곳 × 범죄유형 38개)를 data/crime/crime.json 정적 파일로 제공(키 불필요). 장소 카드 「이 지역 범죄 통계」·주변정보 「지도 가운데 지역 범죄 통계」 → 카카오 좌표→행정구역(실패 시 주소 문자열)으로 시군구를 찾아 대분류 합계·중분류 펼침 표 표시. 지도 색칠·순위·자체 위험지표 없음, 「인구·면적 미반영·위험도 아님」 안내 고정. 생성: 도구/build_crime.py -->
@@ -38,7 +39,7 @@
 <meta name="application-name" content="어디고">
 <meta name="theme-color" content="#f07a22">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
-<link rel="stylesheet" href="css/odigo.css?v=2.2">
+<link rel="stylesheet" href="css/odigo.css?v=2.3">
 </head>
 <body>
 
@@ -87,7 +88,7 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
-<script src="js/nearby.js?v=2.2"></script>
-<script src="js/odigo.js?v=2.2"></script>
+<script src="js/nearby.js?v=2.3"></script>
+<script src="js/odigo.js?v=2.3"></script>
 </body>
 </html>
