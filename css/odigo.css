@@ -213,3 +213,75 @@ label.fld { display: block; font-size: 13px; color: var(--soft); margin: 10px 0 
 .sf-legend img { width: 18px; height: 18px; }
 .sf-op { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--soft); margin-top: 6px; }
 .sf-op input { flex: 1; max-width: 160px; }
+
+/* ═════════ 레이어 패널 (v2.4) ═════════ */
+.lp-btn { flex: none; width: 42px; height: 40px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); display: flex; align-items: center; justify-content: center; padding: 0; }
+.lp-btn.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.layer-panel {
+  position: fixed; z-index: 22; right: 8px; top: calc(64px + env(safe-area-inset-top, 0px));
+  width: min(360px, calc(100vw - 16px));
+  max-height: calc(100vh - 64px - env(safe-area-inset-top, 0px) - 240px - var(--safe-b));
+  max-height: calc(100dvh - 64px - env(safe-area-inset-top, 0px) - 240px - var(--safe-b));
+  min-height: 0; display: flex; flex-direction: column;
+  background: #fff; border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.22); overflow: hidden;
+}
+@media (max-height: 640px) { .layer-panel { max-height: calc(100dvh - 64px - 150px); } }
+.lp-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line); background: #fff; }
+.lp-head b { flex: 1; font-size: 15.5px; }
+.lp-head button { border: 1.5px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 8px; font-size: 12.5px; white-space: nowrap; }
+.lp-head #lpClose { width: 34px; padding: 6px 0; font-size: 15px; }
+.lp-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 4px 12px 12px; }
+.layer-panel.collapsed .lp-body { display: none; }
+.layer-panel.collapsed { max-height: none; }
+.ly-sec { font-size: 12px; font-weight: 800; color: var(--soft); margin: 12px 0 6px; }
+.ly-base { display: flex; gap: 6px; }
+.ly-base + .ly-base { margin-top: 6px; }
+.ly-base button { flex: 1; border: 1.5px solid var(--line); background: #fff; border-radius: 9px; padding: 9px 4px; font-size: 14px; }
+.ly-base button.on { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 700; }
+.ly-base button.kakao { background: #fee500; border-color: #f6c000; color: #3a2e00; font-weight: 700; }
+.ly-base button.naver { background: #03c75a; border-color: #02a94b; color: #fff; font-weight: 700; }
+.ly-note { font-size: 11.5px; color: var(--soft); line-height: 1.5; margin: 6px 0 0; }
+.ly-item { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.ly-item.sub { padding-left: 14px; background: #fafbfa; }
+.ly-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.ly-sw { flex: none; width: 12px; height: 12px; border-radius: 3px; }
+.ly-txt { flex: 1; min-width: 0; }
+.ly-txt b { display: block; font-size: 14.5px; }
+.ly-txt small { display: block; font-size: 11.5px; color: var(--soft); line-height: 1.4; }
+.ly-more { margin: 6px 0 0 22px; }
+.ly-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; color: #4d5a55; }
+.ly-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 3px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.12); }
+.ly-op { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--soft); margin: 8px 0 0 22px; }
+.ly-op input { flex: 1; min-width: 0; }
+.ly-op span { width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+/* 레이어 패널이 열려 있어도 검색 결과는 그 위에 */
+body.lp-open .search-results { z-index: 26; }
+
+/* 지도 라벨 (텐아르와 같은 모양) */
+.cad-label { color: #fff; font-weight: 800; white-space: nowrap; pointer-events: none; text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 0 2px #000; }
+.price-label { font-size: 10.5px; font-weight: 800; color: #0b3d91; text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 1px 2px #fff; white-space: nowrap; pointer-events: none; }
+.plan-label { font-size: 13px; font-weight: 900; color: #9d174d; background: rgba(255,255,255,.85); border: 1px solid rgba(157,23,77,.5); border-radius: 8px; padding: 2px 7px; white-space: nowrap; pointer-events: none; }
+.ad-label { font-weight: 800; white-space: nowrap; pointer-events: none; letter-spacing: -.02em; }
+/* 라벨 마커가 내 장소 핀 위로 올라오지 않게 */
+.maplibregl-marker.cad-label, .maplibregl-marker.price-label, .maplibregl-marker.plan-label, .maplibregl-marker.ad-label { z-index: 0; }
+.li-pop .kv td small { color: var(--soft); }
+.li-warn { font-size: 12px; color: #7a4b00; background: #fff8e1; border-radius: 6px; padding: 6px 8px; margin: 4px 0 6px; }
+
+/* 카카오·네이버 대체 지도 */
+.alt-view { position: fixed; inset: 0; z-index: 35; background: #fff; display: flex; flex-direction: column; }
+.alt-head { flex: none; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; padding-top: max(8px, env(safe-area-inset-top)); border-bottom: 1px solid var(--line); }
+.alt-view.kakao .alt-head { background: #fee500; }
+.alt-view.naver .alt-head { background: #03c75a; color: #fff; }
+.alt-head b { font-size: 15.5px; }
+.alt-bar { flex: 1; display: flex; gap: 5px; flex-wrap: wrap; min-width: 0; }
+.alt-bar button, #altClose { border: 1.5px solid rgba(0,0,0,.18); background: rgba(255,255,255,.92); color: #222; border-radius: 8px; padding: 6px 9px; font-size: 12.5px; }
+.alt-bar button.on { background: #19352e; color: #fff; border-color: #19352e; }
+#altClose { font-weight: 700; }
+.alt-map { flex: 1; min-height: 0; }
+.alt-info { flex: none; padding: 8px 12px calc(8px + var(--safe-b)); font-size: 13px; background: #f6f8f7; border-top: 1px solid var(--line); }
+.alt-pin { display: flex; align-items: center; gap: 4px; background: var(--place); color: #fff; border: 2px solid #fff; border-radius: 12px; padding: 2px 8px 2px 4px; font-size: 12px; font-weight: 700; box-shadow: 0 1px 4px rgba(0,0,0,.35); white-space: nowrap; max-width: 160px; }
+.alt-pin b { min-width: 16px; height: 16px; border-radius: 50%; background: rgba(255,255,255,.3); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; }
+.alt-pin b:empty { width: 8px; min-width: 8px; height: 8px; background: #fff; }
+.alt-pin span { overflow: hidden; text-overflow: ellipsis; }
+.alt-pin.today { background: var(--today); }
+.alt-pin.sel { outline: 3px solid #1c7ed6; }

@@ -1,11 +1,12 @@
 /* 어디고 v1.8 — 「주변정보」 모듈
    · 설계: 설계/v1.5/어디고맵_주변정보_설계_v1.5.md
-$1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 표 (data/crime/crime.json)
+   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 표 (data/crime/crime.json)
    · v2.0: CCTV 설치 위치 (data/cctv/, 매주 자동 갱신)
    · v2.1: 교통 CCTV 영상 (ITS 실시간, 누를 때만 재생)
    · v2.2: 교통상황 (ITS 실시간 속도 + 표준노드링크 도로 모양)
    · v2.3: 치안·안전정보 지도 (생활안전지도 치안사고통계(전체) WMS)
-   · 나머지(CCTV·교통·교통영상·치안)는 연결 전이라 스위치 잠금·「준비 중」 — 임의 자료를 실제처럼 그리지 않는다.
+   · v2.4: 치안 지도를 레이어 패널(layers.js)의 브이월드 중첩(경계·지적 등)보다 아래에 놓음
+   · 연결 전 항목은 스위치 잠금·「준비 중」 — 임의 자료를 실제처럼 그리지 않는다.
    · 이 모듈이 실패해도 장소 저장·방문 기록(odigo.js)은 계속 동작하도록 분리. */
 (function () {
   'use strict';
@@ -711,7 +712,8 @@ $1   · v1.9: 치안·안전정보 — 경찰청 범죄 발생 지역별 통계 
         '&srs=EPSG:3857&bbox={bbox-epsg-3857}&format=image/png&width=512&height=512&transparent=TRUE'],
       attribution: '치안정보 © <a href="https://www.safemap.go.kr" target="_blank" rel="noopener">생활안전지도</a>(행정안전부)·경찰청, 공공누리 4유형' });
     /* 내 장소 핀(HTML)·아이콘·교통선보다 아래, 배경지도 바로 위 */
-    var before = ['nb-traffic-none', 'nb-traffic-line', 'nb-cctv-cluster', 'nb-parking-cluster', 'nb-vcam-cluster'].filter(function (id) { return map.getLayer(id); })[0];
+    var ovFirst = map.getStyle().layers.filter(function (l) { return l.id.indexOf('ov-') === 0; })[0];   /* v2.4 레이어 패널 중첩보다 아래 */
+    var before = (ovFirst && ovFirst.id) || ['nb-traffic-none', 'nb-traffic-line', 'nb-cctv-cluster', 'nb-parking-cluster', 'nb-vcam-cluster'].filter(function (id) { return map.getLayer(id); })[0];
     map.addLayer({ id: 'nb-safety', type: 'raster', source: 'nb-safety', minzoom: SAFETY_MIN_ZOOM, paint: { 'raster-opacity': safetyOpacity } }, before);
   }
   function setSafety(on) {

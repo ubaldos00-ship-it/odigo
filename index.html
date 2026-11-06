@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- 어디고 odigo v2.3 (2026-11-06) 치안·안전정보 지도(3차) — 생활안전지도 치안사고통계(전체) IF_0075 WMS를 그대로 겹쳐 표시(확대 11 이상, 기본 투명도 40% 조절 가능, 공식 5등급 아이콘 범례, 출처·공공누리 4유형 표시, 「경찰관서 위치·개별 사건 장소/현재 위험도 아님」 안내). 시·군·구 범죄 통계 표 버튼 유지 -->
+<!-- 어디고 odigo v2.4 (2026-11-07) 통합 1단계 「지도와 레이어」 — 오른쪽 위 레이어 버튼·패널(헤더 고정: 초기화·접기·닫기, 항목만 스크롤). 지도 종류 일반지도·항공영상(기존 위성 버튼 통합)+카카오·네이버 대체 지도(공식 SDK, 내 조사 장소·오늘 방문 번호·내 위치 표시, 닫으면 중심 이어받음). 중첩: 지적도·토지정보(필지 조회)·토지이용계획·토지이용계획도(LH 택지)·농업진흥지역·지형도(도로중심선)·개별공시지가·리/읍면동/시군구/시도 경계·행정지역명·하이브리드, 지적도 투명도 0~100%·토지이용계획 투명도 20~70%(5% 단위). 브이월드 데이터 API(JSONP). 설계: 설계/v2.4 -->
+<!-- (이전) 어디고 odigo v2.3 (2026-11-06) 치안·안전정보 지도(3차) — 생활안전지도 치안사고통계(전체) IF_0075 WMS를 그대로 겹쳐 표시(확대 11 이상, 기본 투명도 40% 조절 가능, 공식 5등급 아이콘 범례, 출처·공공누리 4유형 표시, 「경찰관서 위치·개별 사건 장소/현재 위험도 아님」 안내). 시·군·구 범죄 통계 표 버튼 유지 -->
 <!-- (이전) 어디고 odigo v2.2 (2026-11-06) 교통상황(2차) — 국가교통정보센터 표준노드링크(2026-10-14) 중 ITS가 속도를 주는 367,261개 도로 모양을 data/links/major·minor 0.5° 격자(정수 차분 좌표)로 제공, 화면 범위 ITS 교통소통정보 실시간 조회 → 원활·서행·정체(어디고 기준: 고속 70/40, 그 외 30/15km/h)·정보 없음(15분 경과·속도 없음) 색 표시, 켜져 있고 화면이 보일 때만 2분 갱신, 도로 누르면 도로명·속도·관측시각. 생성: 도구/build_links.py -->
 <!-- (이전) 어디고 odigo v2.1 (2026-11-06) 교통 CCTV 영상(2차) — 국가교통정보센터 ITS 고속도로·국도 실시간 CCTV를 화면 범위로 조회(확대 9 이상), 아이콘 → 팝업(도로·영상 제공 여부) → 「영상 보기」 누를 때만 새 주소 받아 https로 재생(Safari 기본, 그 외 hls.js 1.5.13), 창 닫기·레이어 끄기 시 재생·통신 중단. ※ ITS 키 화면 노출(도메인 제한 없음) — 추후 중계 서버로 이전 예정 -->
 <!-- (이전) 어디고 odigo v2.0 (2026-11-06) CCTV 설치 위치 연결 — 행정안전부 CCTV정보 조회서비스 전체를 좌표별로 묶어 data/cctv/ 0.05° 격자 정적 파일로 제공(키 불필요, 확대 14 이상). 주변정보 「CCTV 설치 위치」 켜기·묶음 표시·팝업(설치목적·대수·관리기관·기준일, 작동 여부·촬영 범위 단정 안 함, 영상 버튼 없음). 주차장·CCTV 자료는 GitHub Actions가 매주 자동 갱신(.github/workflows/odigo-data.yml + .github/scripts/odigo_data.py, 키는 GitHub Secrets) -->
@@ -39,7 +40,7 @@
 <meta name="application-name" content="어디고">
 <meta name="theme-color" content="#f07a22">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
-<link rel="stylesheet" href="css/odigo.css?v=2.3">
+<link rel="stylesheet" href="css/odigo.css?v=2.4">
 </head>
 <body>
 
@@ -50,7 +51,33 @@
     <input id="searchInput" type="search" placeholder="장소·주소 검색 (예: 고령군청, 대가야읍 지산리 123)" enterkeyhint="search">
     <button type="submit" aria-label="검색">검색</button>
   </form>
+  <button id="btnLayer" class="lp-btn" type="button" title="레이어" aria-label="레이어">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3.2 2.6 8.1l9.4 4.9 9.4-4.9L12 3.2Z" fill="currentColor"/><path d="M4.9 11.4 2.6 12.6l9.4 4.9 9.4-4.9-2.3-1.2-7.1 3.7-7.1-3.7Z" fill="currentColor"/><path d="M4.9 15.9 2.6 17.1 12 22l9.4-4.9-2.3-1.2-7.1 3.7-7.1-3.7Z" fill="currentColor"/></svg>
+  </button>
 </header>
+
+<!-- 레이어 패널 (헤더 고정 · 항목만 스크롤) -->
+<section id="layerPanel" class="layer-panel" hidden aria-label="레이어">
+  <div class="lp-head">
+    <b>🗺 레이어</b>
+    <button id="lpReset" type="button">↺ 초기화</button>
+    <button id="lpFold" type="button" aria-expanded="true">▾ 접기</button>
+    <button id="lpClose" type="button" aria-label="닫기">✕</button>
+  </div>
+  <div id="lpBody" class="lp-body"></div>
+</section>
+
+<!-- 카카오·네이버 대체 지도 -->
+<section id="altView" class="alt-view" hidden>
+  <div class="alt-head">
+    <b id="altTitle">지도</b>
+    <div id="altBar" class="alt-bar"></div>
+    <button id="altClose" type="button">✕ 어디고 지도로</button>
+  </div>
+  <div id="altKakao" class="alt-map" hidden></div>
+  <div id="altNaver" class="alt-map" hidden></div>
+  <div id="altInfo" class="alt-info"></div>
+</section>
 <div id="searchResults" class="search-results" hidden></div>
 
 <!-- 지도 -->
@@ -59,7 +86,6 @@
 <!-- 지도 오른쪽 버튼 -->
 <div class="fab-col">
   <button id="btnNearby" class="fab" title="주변정보"><span>🧭</span><small>주변정보</small></button>
-  <button id="btnBase" class="fab" title="배경지도 전환"><span>🛰️</span><small>위성</small></button>
   <button id="btnLocate" class="fab" title="내 위치"><span>📍</span><small>내 위치</small></button>
 </div>
 
@@ -88,7 +114,8 @@
 <div id="toast" class="toast" hidden></div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
-<script src="js/nearby.js?v=2.3"></script>
-<script src="js/odigo.js?v=2.3"></script>
+<script src="js/nearby.js?v=2.4"></script>
+<script src="js/odigo.js?v=2.4"></script>
+<script src="js/layers.js?v=2.4"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v2.3';
+  var APP_VERSION = 'v2.4';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -59,7 +59,10 @@
   /* ───────── 지도 ───────── */
   function tileUrl(layer, ext) { return 'https://api.vworld.kr/req/wmts/1.0.0/' + VWORLD_API_KEY + '/' + layer + '/{z}/{y}/{x}.' + ext; }
   var view = loadJSON(VIEW_KEY, null);
-  var base = loadJSON(BASE_KEY, 'Base');
+  /* v2.4: 배경·하이브리드 선택은 레이어 패널(layers.js, odigo_layers_v2)이 관리. 첫 화면 깜빡임을 막으려고 여기서 미리 읽음 */
+  var lyrSet = loadJSON('odigo_layers_v2', null);
+  var base = lyrSet ? lyrSet.base : loadJSON(BASE_KEY, 'Base');
+  var hybridOn = lyrSet ? !!(lyrSet.ov && lyrSet.ov.hybrid) : base === 'Sat';
 
   var map = new maplibregl.Map({
     container: 'map',
@@ -74,7 +77,7 @@
         { id: 'bg', type: 'background', paint: { 'background-color': '#eef1ef' } },
         { id: 'base', type: 'raster', source: 'base', layout: { visibility: base === 'Base' ? 'visible' : 'none' } },
         { id: 'sat', type: 'raster', source: 'sat', layout: { visibility: base === 'Sat' ? 'visible' : 'none' } },
-        { id: 'hybrid', type: 'raster', source: 'hybrid', layout: { visibility: base === 'Sat' ? 'visible' : 'none' } }
+        { id: 'hybrid', type: 'raster', source: 'hybrid', layout: { visibility: hybridOn ? 'visible' : 'none' } }
       ]
     },
     center: view ? [view.lng, view.lat] : [127.9, 36.2],
@@ -88,15 +91,7 @@
   var tileErrShown = false;
   map.on('error', function (e) { if (!tileErrShown && e && e.sourceId) { tileErrShown = true; toast('배경지도 일부를 불러오지 못했습니다'); } });
 
-  function setBase(b) {
-    base = b; saveJSON(BASE_KEY, b);
-    map.setLayoutProperty('base', 'visibility', b === 'Base' ? 'visible' : 'none');
-    map.setLayoutProperty('sat', 'visibility', b === 'Sat' ? 'visible' : 'none');
-    map.setLayoutProperty('hybrid', 'visibility', b === 'Sat' ? 'visible' : 'none');
-    $('btnBase').innerHTML = b === 'Sat' ? '<span>🗺️</span><small>일반</small>' : '<span>🛰️</span><small>위성</small>';
-  }
-  map.on('load', function () { setBase(base); });
-  $('btnBase').addEventListener('click', function () { setBase(base === 'Sat' ? 'Base' : 'Sat'); });
+  /* v2.4: 위성 버튼은 레이어 패널의 「일반지도·항공영상」으로 옮김 (js/layers.js) */
 
   /* ───────── 내 장소 마커 (HTML 마커 = 공공시설 레이어보다 항상 위) ───────── */
   var markers = {};
@@ -134,8 +129,10 @@
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeSheet(); hideResults(); } });
 
   /* ───────── 장소 카드 ───────── */
+  var selectedId = null;   /* 마지막으로 연 장소 — 카카오·네이버 대체 지도에서 강조 */
   function openPlace(id) {
     var p = findPlace(id); if (!p) return;
+    selectedId = id;
     var tl = todayList(), ti = tl.indexOf(p);
     var visits = (p.visits || []).slice().reverse();
     var html =
@@ -480,7 +477,15 @@
   })();
 
   /* 주변정보 모듈(nearby.js)이 쓰는 공용 기능 */
-  window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf };
+  window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
+    ensureKakao: ensureKakao,
+    /* 대체 지도(layers.js)용: 내 조사 장소 + 오늘 방문 번호 + 선택 여부 */
+    pinsForAlt: function () {
+      var tl = todayList();
+      return places.filter(function (p) { return isFinite(p.lat) && isFinite(p.lng); }).map(function (p) {
+        var i = tl.indexOf(p); return { id: p.id, name: p.name, lat: p.lat, lng: p.lng, order: i >= 0 ? i + 1 : 0, sel: p.id === selectedId };
+      });
+    } };
 
   renderMarkers();
   updateCounts();
