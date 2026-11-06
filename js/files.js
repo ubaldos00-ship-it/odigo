@@ -1,4 +1,4 @@
-/* 어디고 v3.0 — 자료 파일 (설계: 설계/v2.4 11장 + 2026-11-07 엑셀 업로드 요청)
+/* 어디고 v3.0 — 자료 파일 (v3.1: 텐아르 핀 가져오기) (설계: 설계/v2.4 11장 + 2026-11-07 엑셀 업로드 요청)
    · 업무별 공유 파일: 범위(업무 전체·조사 유형·작물·고른 조사구) → 건수 미리보기 → 암호화 파일(암호 2026)
      → 휴대폰 공유 메뉴(카톡·문자 등) / 지원 안 되면 파일 저장 + 공유 문구 복사
    · 가져오기는 odigo.js의 「자료 파일 가져오기」(미리보기 후 합치기)를 그대로 씀
@@ -340,5 +340,103 @@
     });
   }
 
-  window.OdigoFiles = { openExport: openExport, openExcel: openExcel, template: templateFile };
+
+  /* ───────── 텐아르 핀 가져오기 (같은 휴대폰·같은 브라우저) ─────────
+     텐아르(/home)와 어디고(/odigo)는 같은 사이트 주소라 브라우저 저장소를 함께 씀.
+     텐아르는 자료를 기기키(__tenar_secure_device_key_v1)로 AES-GCM 암호화해 두므로 그 키로 풀어 읽기만 함(텐아르 자료는 바꾸지 않음).
+     전화번호·담당자 연락처는 가져오지 않음. */
+  var TENAR_KEY = '__tenar_secure_device_key_v1';
+  var TENAR_TYPES = [
+    { store: 'tenarAreaSurveyPlotsEncrypted', label: '작물재배 조사구', type: 'area' },
+    { store: 'tenarAreaPlots_livestock_enc', label: '가축', type: 'livestock', kindLabel: '축종' },
+    { store: 'tenarAreaPlots_livecost_enc', label: '축비', type: 'livecost', kindLabel: '축종' },
+    { store: 'tenarAreaPlots_farmcost_enc', label: '농비', type: 'farmcost', kindLabel: '지목' },
+    { store: 'tenarAreaPlots_riceprice_enc', label: '쌀값', type: 'rice' },
+    { store: 'tenarAreaPlots_farmsale_enc', label: '농판', type: 'farmsale' },
+    { store: 'tenarAreaPlots_etc_enc', label: '기타조사', type: 'etc' },
+    { store: 'tenar_map_favs_v1', label: '생산량 핀(즐겨찾기)', type: 'prod', fav: true }
+  ];
+  function b64u8(b) { var bin = atob(b), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+  var tkeyP = null;
+  function tenarKey() {
+    if (tkeyP) return tkeyP;
+    var raw = null; try { raw = localStorage.getItem(TENAR_KEY); } catch (e) {}
+    tkeyP = raw ? crypto.subtle.importKey('raw', b64u8(raw), { name: 'AES-GCM' }, false, ['decrypt']).catch(function () { return null; }) : Promise.resolve(null);
+    return tkeyP;
+  }
+  function readTenar(store) {
+    var raw = null; try { raw = localStorage.getItem(store); } catch (e) {}
+    if (!raw) return Promise.resolve(null);
+    var o; try { o = JSON.parse(raw); } catch (e) { return Promise.resolve(null); }
+    if (Array.isArray(o)) return Promise.resolve(o);   /* 암호화 전(평문) 자료 */
+    if (!o || o.tenarSecure !== true || o.secureType !== 'device-cache') return Promise.resolve(null);
+    return tenarKey().then(function (k) {
+      if (!k) return { err: 'nokey' };
+      return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(o.iv) }, k, b64u8(o.ciphertext)).then(function (pt) {
+        var a = JSON.parse(new TextDecoder().decode(pt)); return Array.isArray(a) ? a : null;
+      }, function () { return { err: 'decrypt' }; });
+    });
+  }
+  /* 텐아르 시각("2026-10-12 00:02" 등)을 비교 가능한 형태로 — 어디고에서 고친 뒤면 어디고 쪽이 남음 */
+  function tTime(t) { t = String(t || '').trim(); return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.replace(' ', 'T') : ''; }
+  function okLL(la, lo) { return isFinite(la) && isFinite(lo) && la > 32 && la < 40 && lo > 124 && lo < 132; }
+  function tenarToSite(cfg, r) {
+    var T = D(), now = new Date().toISOString();
+    var la = Number(r.latitude != null ? r.latitude : r.lat), lo = Number(r.longitude != null ? r.longitude : r.lng);
+    if (!okLL(la, lo)) return null;
+    var base = { id: 'tenar:' + cfg.type + ':' + (r.id || (la.toFixed(6) + ',' + lo.toFixed(6))), lat: la, lng: lo, division: 'agri', type: cfg.type,
+      createdAt: tTime(r.createdAt) || now, updatedAt: tTime(r.updatedAt) || tTime(r.createdAt) || '2000-01-01T00:00', source: 'tenar' };
+    if (cfg.fav) {
+      var crop = String(r.crop || '').trim();
+      return Object.assign(base, { name: r.name || r.label || r.jibunAddress || '생산량 핀', addr: r.jibunAddress || r.addr || r.roadAddress || '', memo: r.memo || '',
+        crop: T.CROPS.indexOf(crop) >= 0 ? crop : null, josaguNo: '', floor: '', card: '', kind: '', region: null });
+    }
+    var no = String(r.josagu || '').replace(/^0+(?=\d)/, ''), fl = String(r.floor || '').replace(/^0+(?=\d)/, '');
+    var kind = String(r.kind || '').trim(), memoParts = [];
+    var kindOk = T.KINDS.indexOf(kind) >= 0;
+    if (kind && !kindOk) memoParts.push((cfg.kindLabel || '구분') + ' ' + kind);
+    if (r.farmName) memoParts.push('농장 ' + r.farmName);
+    if (r.note) memoParts.push(r.note);
+    if (r.memo) memoParts.push(r.memo);
+    var name = cfg.type === 'area' ? ['작물재배', no ? no + '조사구' : '', r.number ? '#' + r.number : ''].filter(Boolean).join(' ') : (r.name || cfg.label + (r.number ? ' ' + r.number : ''));
+    return Object.assign(base, { name: name, addr: r.address1 || '', memo: memoParts.join(' / '), crop: null, josaguNo: no, floor: fl, card: '', kind: kindOk ? kind : '',
+      region: r.sido && r.sigungu && r.eupmyeondong ? { basis: 'tenar', sido: r.sido, sigungu: r.sigungu, emd: r.eupmyeondong, ri: '', status: 'ok', at: now } : null });
+  }
+  function openTenarImport() {
+    var T = D();
+    if (!T.profile()) { A().toast('먼저 내 설정을 해 주세요'); return; }
+    var body = A().openSheet('📍 텐아르 핀 가져오기', '<p class="muted">이 휴대폰(이 브라우저)에 저장된 텐아르 자료를 찾는 중…</p>');
+    Promise.all(TENAR_TYPES.map(function (c) { return readTenar(c.store); })).then(function (res) {
+      var found = [], lockErr = false;
+      res.forEach(function (a, i) {
+        if (a && a.err) { lockErr = true; return; }
+        if (!a || !a.length) return;
+        var sites = a.map(function (r) { return tenarToSite(TENAR_TYPES[i], r); }).filter(Boolean);
+        found.push({ cfg: TENAR_TYPES[i], total: a.length, sites: sites });
+      });
+      if (!found.length) {
+        body.innerHTML = '<p>이 브라우저에서 텐아르 핀을 찾지 못했습니다.</p>' +
+          (lockErr ? '<p class="warn">텐아르 자료는 있는데 열쇠로 열리지 않았습니다. 텐아르를 한 번 열었다 닫은 뒤 다시 시도해 주세요.</p>' : '') +
+          '<p class="muted">텐아르를 쓰는 <b>같은 휴대폰·같은 브라우저</b>(예: 둘 다 Safari)에서 어디고를 열어야 보입니다. 다른 기기라면 텐아르 조사구를 엑셀로 내보내 「📥 엑셀로 조사구 올리기」로 올려 주세요.</p>';
+        return;
+      }
+      var have = {}; T.sites().forEach(function (s) { have[s.id] = 1; });
+      body.innerHTML = '<p class="muted">텐아르 자료는 읽기만 하고 바꾸지 않습니다. 전화번호·담당자 연락처는 가져오지 않습니다. 모두 <b>농어업과</b>의 해당 업무로 들어갑니다.</p>' +
+        found.map(function (f, i) {
+          var t = T.typeOf('agri', f.cfg.type), nw = f.sites.filter(function (s) { return !have[s.id]; }).length;
+          return '<label class="un-row"><input type="checkbox" data-i="' + i + '" checked><span><b>' + esc(f.cfg.label) + ' → ' + esc(t ? t.name : '') + '</b><small>' + f.sites.length + '곳' +
+            (f.total > f.sites.length ? ' (위치 없는 ' + (f.total - f.sites.length) + '곳 제외)' : '') + ' · 처음 가져옴 ' + nw + '곳</small></span></label>';
+        }).join('') +
+        '<div class="row"><button class="btn primary full" id="tnGo">가져오기 미리보기</button></div>' +
+        '<p class="muted">다시 가져와도 같은 핀은 겹치지 않습니다. 텐아르와 어디고 중 더 나중에 고친 쪽 내용이 남습니다.</p>';
+      body.querySelector('#tnGo').addEventListener('click', function () {
+        var sites = [];
+        body.querySelectorAll('[data-i]:checked').forEach(function (c) { sites = sites.concat(found[+c.getAttribute('data-i')].sites); });
+        if (!sites.length) { A().toast('가져올 항목을 골라 주세요'); return; }
+        A().previewMerge({ sites: sites, visits: [] }, { title: '텐아르 핀 → 농어업과', from: '텐아르(이 기기)', sites: sites.length });
+      });
+    });
+  }
+
+  window.OdigoFiles = { openExport: openExport, openExcel: openExcel, template: templateFile, openTenarImport: openTenarImport };
 })();

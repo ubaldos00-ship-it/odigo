@@ -1,4 +1,5 @@
 /* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4) · v2.8: 나 조사하러 간다(safety.js) 연결·안전 연락 설정·공유 위치 링크 열기
+   · v3.1: 텐아르 핀 가져오기(files.js), 가져온 자료는 이름이 같으면 최신으로 갱신
    · v3.0: 핀 모양·색·이름표를 업무(조사 유형)별로, 업무별 자료 공유·엑셀 올리기(files.js) 연결
    · v2.9: 조사구 항목(조사구번호·층·카드·구분), 업무별 핀 모양·색·이름표 설정, 핀 안 번호(조사별·읍면동 순서), 목록 드롭다운 필터, 내 위치 3단(이동·방향·해제)
    · 배경지도: MapLibre + VWorld WMTS (레이어 패널은 layers.js)
@@ -11,7 +12,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v3.0';
+  var APP_VERSION = 'v3.1';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -1154,6 +1155,8 @@
       '<label class="fld">자료 파일 (암호화)</label>' +
       '<div class="row"><button class="btn" id="goShare" style="flex:1">📤 업무별 자료 공유</button><label class="btn" style="flex:1;text-align:center">📂 자료 파일 가져오기<input id="bkLoad" type="file" accept="application/json,.json,.odigo" hidden></label></div>' +
       '<div class="row"><button class="btn" id="bkSave" style="flex:1">💾 전체 백업 저장</button></div>' +
+      '<label class="fld">텐아르</label>' +
+      '<div class="row"><button class="btn" id="goTenar" style="flex:1">📍 텐아르 핀 가져오기 (이 기기)</button></div>' +
       '<label class="fld">엑셀</label>' +
       '<div class="row"><button class="btn" id="goXls" style="flex:1">📥 엑셀로 조사구 올리기</button><button class="btn" id="goTpl" style="flex:1">📄 엑셀 양식 받기</button></div>' +
       '<p class="muted">백업 파일 암호는 모든 어디고 사용자가 같은 <b>' + (window.OdigoStore ? OdigoStore.FILE_PASSWORD : '2026') + '</b>입니다. 파일을 받은 사람은 누구나 열 수 있으니 받을 사람만 있는 곳에 보내 주세요. 예전(v2.3) 백업 파일도 불러올 수 있습니다.</p>' +
@@ -1169,6 +1172,7 @@
     body.querySelector('#bkSave').addEventListener('click', exportBackup);
     body.querySelector('#goShare').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openExport({ div: db.profile && db.profile.division }); });
     body.querySelector('#goXls').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openExcel({ div: db.profile && db.profile.division }); });
+    body.querySelector('#goTenar').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openTenarImport(); });
     body.querySelector('#goTpl').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.template(); });
     body.querySelector('#bkLoad').addEventListener('change', function (e) { var f = e.target.files && e.target.files[0]; if (f) importBackup(f); });
   });
@@ -1288,7 +1292,7 @@
   window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
     ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
     getProfile: function () { return db.profile; },
-    fitSites: fitSites,
+    fitSites: fitSites, previewMerge: previewMerge,
     /* files.js(공유·엑셀)용 자료 창구 */
     data: {
       APP_VERSION: APP_VERSION, DIVISIONS: DIVISIONS, CROPS: CROPS, KINDS: KINDS, divOf: divOf, typeOf: typeOf,
