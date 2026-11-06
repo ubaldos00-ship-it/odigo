@@ -418,3 +418,24 @@ body.pin-labels .pin-label { display: block; }
 #btnLocate.heading { background: #1c7ed6; }
 #btnLocate.heading small { color: #fff; }
 .tab-hint { margin: -4px 0 6px; font-size: 11.5px; }
+
+/* ═════════ v3.0 자료 공유·엑셀 / 텐아르식 내 위치 ═════════ */
+.x-sum { font-size: 14px; background: #f1f6f4; border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+.x-by { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 13px; }
+.x-row { font-size: 13.5px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.x-row small { color: var(--soft); }
+.x-prog { margin: 10px 0; }
+.x-prog > div { height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
+.x-prog span { display: block; height: 100%; width: 0; background: var(--primary); transition: width .2s; }
+.x-prog small { color: var(--soft); }
+
+/* 텐아르 TLoc 마커 그대로 */
+.tloc-marker { position: relative; width: 22px; height: 22px; pointer-events: none; }
+.tloc-marker .tloc-acc { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform: translate(-50%, -50%); border-radius: 50%; background: rgba(26,115,232,.42); border: 2px solid rgba(26,115,232,.75); display: none; pointer-events: none; }
+.tloc-marker.acc-on .tloc-acc { display: block; animation: tlocPulse 1.9s ease-in-out infinite; }
+@keyframes tlocPulse { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
+.tloc-marker .tloc-dot { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); box-sizing: border-box; }
+.tloc-marker .tloc-arrow { position: absolute; left: 50%; top: 50%; width: 0; height: 0; margin: -20px 0 0 -6px; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid #1a73e8; filter: drop-shadow(0 0 1px #fff); display: none; }
+.tloc-marker .tloc-fan { position: absolute; left: 50%; top: 50%; width: 66px; height: 58px; margin: -58px 0 0 -33px; background: linear-gradient(to top, rgba(26,115,232,.66), rgba(26,115,232,.06)); -webkit-clip-path: polygon(50% 100%, 0% 0%, 100% 0%); clip-path: polygon(50% 100%, 0% 0%, 100% 0%); display: none; }
+.tloc-marker.has-heading .tloc-arrow, .tloc-marker.has-heading .tloc-fan { display: block; }
+.gps-status { position: fixed; left: 50%; bottom: calc(100px + var(--safe-b)); transform: translateX(-50%); z-index: 16; padding: 5px 12px; border-radius: 14px; font-size: 12px; font-weight: 800; color: #fff; background: #6b7280; box-shadow: 0 2px 9px rgba(0,0,0,.3); pointer-events: none; white-space: nowrap; }
