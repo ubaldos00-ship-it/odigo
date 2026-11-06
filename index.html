@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- 어디고 odigo v3.1 (2026-11-07) 텐아르 핀 가져오기 — 같은 휴대폰·같은 브라우저에 저장된 텐아르 조사구 7종(작물재배→재배면적, 가축, 축비, 농비, 쌀값, 농판, 기타조사→기타농업)과 생산량 핀(작물 포함)을 농어업과 업무로 가져옴. 텐아르 기기키로 읽기만(텐아르 자료 변경 없음), 전화번호·담당자 연락처 제외, 같은 핀 다시 가져오면 겹치지 않음. ⓘ › 텐아르 -->
+<!-- 어디고 odigo v3.2 (2026-11-07) 텐아르 내보내기 파일로 가져오기 — 홈 화면에 설치한 앱은 앱마다 저장 공간이 따로라 「이 기기」 읽기가 안 됨 → 텐아르 「전체 백업」(tenar-area-backup)·종류별 공유(tenar-area-plots)·즐겨찾기 공유(favorites) 파일을 텐아르 암호로 열어 농어업과 업무로 가져옴 -->
+<!-- (이전) 어디고 odigo v3.1 (2026-11-07) 텐아르 핀 가져오기 — 같은 휴대폰·같은 브라우저에 저장된 텐아르 조사구 7종(작물재배→재배면적, 가축, 축비, 농비, 쌀값, 농판, 기타조사→기타농업)과 생산량 핀(작물 포함)을 농어업과 업무로 가져옴. 텐아르 기기키로 읽기만(텐아르 자료 변경 없음), 전화번호·담당자 연락처 제외, 같은 핀 다시 가져오면 겹치지 않음. ⓘ › 텐아르 -->
 <!-- (이전) 어디고 odigo v3.0 (2026-11-07) 통합 4단계 + 엑셀 — 업무별 자료 공유(업무 전체·조사 유형·작물·고른 조사구 → 건수 미리보기 → 암호화 파일(2026) → 휴대폰 공유 메뉴, 안 되면 저장+문구 복사), 자료 파일 가져오기(보낸 사람·범위·새로/최신/중복 미리보기 후 합치기), 엑셀 양식 받기·엑셀로 조사구 올리기(텐아르 조사구 양식 인식, 위도·경도 없으면 주소·지번으로 카카오 위치 찾기, 못 찾은 줄은 올리지 않고 행 번호 안내, 중복 건너뜀, SheetJS 0.20.3). 핀 모양·색·이름표를 업무(조사 유형)별로(내 과 업무 먼저). 내 위치를 텐아르 TLoc과 같게: 정확도 원·방향 부채꼴(폰 방향대로 회전), ①현재 위치 ②방향 추적(지도 회전) ③해제, GPS 상태 표시 -->
 <!-- (이전) 어디고 odigo v2.9 (2026-11-07) 길게 누르기 팝업을 핀 위로, 문자 번호 기억·네이버지도 링크 추가, 조사구 항목(조사구번호·층·카드·구분 논/밭/대지/축사/응답자집), 업무별 핀 모양(물방울·동그라미·네모·마름모·세모·별)·색·이름표(조사명·이름·주소·층-카드·조사구번호·작물) 설정, 핀 안 번호 = 같은 조사·읍면동 안 순서(조사구번호 순), 오늘 방문 번호는 핀 오른쪽 위 빨간 표, 목록 드롭다운(시도·시군구·읍면동·작물·층·조사구·구분), 내 위치 3단(이동·따라가기 → 방향 → 해제) -->
 <!-- (이전) 어디고 odigo v2.8 (2026-11-07) 통합 3단계 「나 조사하러 간다」 — 아래 버튼·조사구 카드·임시 핀에서 GPS 1회 조회 → 미리보기(현재 위치·GPS 시각·정확도·목적지, 각 지도 링크) → 카카오톡 공유(공식 SDK 2.7.4, 방은 사용자가 선택)·문자 작성(기본 번호, 문구 먼저 복사)·문구 복사. GPS 거부·시간 초과·정확도 낮음 안내, 목적지만/지도 핀/마지막 위치. 내 설정에 안전 연락(문자 번호·카톡 방 이름). 카톡 버튼 링크 ?pin= 을 열면 그 위치 핀·카카오맵·길찾기 -->
@@ -47,7 +48,7 @@
 <meta name="application-name" content="어디고">
 <meta name="theme-color" content="#f07a22">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
-<link rel="stylesheet" href="css/odigo.css?v=3.1">
+<link rel="stylesheet" href="css/odigo.css?v=3.2">
 </head>
 <body>
 
@@ -126,11 +127,11 @@
 <div id="gpsStatus" class="gps-status" hidden></div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
-<script src="js/nearby.js?v=3.1"></script>
-<script src="js/store.js?v=3.1"></script>
-<script src="js/odigo.js?v=3.1"></script>
-<script src="js/layers.js?v=3.1"></script>
-<script src="js/safety.js?v=3.1"></script>
-<script src="js/files.js?v=3.1"></script>
+<script src="js/nearby.js?v=3.2"></script>
+<script src="js/store.js?v=3.2"></script>
+<script src="js/odigo.js?v=3.2"></script>
+<script src="js/layers.js?v=3.2"></script>
+<script src="js/safety.js?v=3.2"></script>
+<script src="js/files.js?v=3.2"></script>
 </body>
 </html>

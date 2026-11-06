@@ -1,4 +1,4 @@
-/* 어디고 v3.0 — 자료 파일 (v3.1: 텐아르 핀 가져오기) (설계: 설계/v2.4 11장 + 2026-11-07 엑셀 업로드 요청)
+/* 어디고 v3.0 — 자료 파일 (v3.1: 텐아르 핀 가져오기 · v3.2: 텐아르 내보내기 파일로 가져오기 — 홈 화면 앱끼리는 저장소가 따로라서) (설계: 설계/v2.4 11장 + 2026-11-07 엑셀 업로드 요청)
    · 업무별 공유 파일: 범위(업무 전체·조사 유형·작물·고른 조사구) → 건수 미리보기 → 암호화 파일(암호 2026)
      → 휴대폰 공유 메뉴(카톡·문자 등) / 지원 안 되면 파일 저장 + 공유 문구 복사
    · 가져오기는 odigo.js의 「자료 파일 가져오기」(미리보기 후 합치기)를 그대로 씀
@@ -356,6 +356,7 @@
     { store: 'tenarAreaPlots_etc_enc', label: '기타조사', type: 'etc' },
     { store: 'tenar_map_favs_v1', label: '생산량 핀(즐겨찾기)', type: 'prod', fav: true }
   ];
+  var TENAR_KEYMAP = { crop: 0, livestock: 1, livecost: 2, farmcost: 3, riceprice: 4, farmsale: 5, etc: 6 };
   function b64u8(b) { var bin = atob(b), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
   var tkeyP = null;
   function tenarKey() {
@@ -417,7 +418,9 @@
       if (!found.length) {
         body.innerHTML = '<p>이 브라우저에서 텐아르 핀을 찾지 못했습니다.</p>' +
           (lockErr ? '<p class="warn">텐아르 자료는 있는데 열쇠로 열리지 않았습니다. 텐아르를 한 번 열었다 닫은 뒤 다시 시도해 주세요.</p>' : '') +
-          '<p class="muted">텐아르를 쓰는 <b>같은 휴대폰·같은 브라우저</b>(예: 둘 다 Safari)에서 어디고를 열어야 보입니다. 다른 기기라면 텐아르 조사구를 엑셀로 내보내 「📥 엑셀로 조사구 올리기」로 올려 주세요.</p>';
+          '<p class="muted">텐아르를 쓰는 <b>같은 휴대폰·같은 브라우저</b>(예: 둘 다 Safari)에서 어디고를 열어야 보입니다. ' +
+          '<b>홈 화면에 설치한 앱</b>은 앱마다 저장 공간이 따로라서 서로 볼 수 없습니다 → 아래 「텐아르 파일로 가져오기」를 쓰세요.</p>' + fileBox();
+        bindFileBox(body);
         return;
       }
       var have = {}; T.sites().forEach(function (s) { have[s.id] = 1; });
@@ -428,7 +431,8 @@
             (f.total > f.sites.length ? ' (위치 없는 ' + (f.total - f.sites.length) + '곳 제외)' : '') + ' · 처음 가져옴 ' + nw + '곳</small></span></label>';
         }).join('') +
         '<div class="row"><button class="btn primary full" id="tnGo">가져오기 미리보기</button></div>' +
-        '<p class="muted">다시 가져와도 같은 핀은 겹치지 않습니다. 텐아르와 어디고 중 더 나중에 고친 쪽 내용이 남습니다.</p>';
+        '<p class="muted">다시 가져와도 같은 핀은 겹치지 않습니다. 텐아르와 어디고 중 더 나중에 고친 쪽 내용이 남습니다.</p>' + fileBox();
+      bindFileBox(body);
       body.querySelector('#tnGo').addEventListener('click', function () {
         var sites = [];
         body.querySelectorAll('[data-i]:checked').forEach(function (c) { sites = sites.concat(found[+c.getAttribute('data-i')].sites); });
@@ -436,6 +440,64 @@
         A().previewMerge({ sites: sites, visits: [] }, { title: '텐아르 핀 → 농어업과', from: '텐아르(이 기기)', sites: sites.length });
       });
     });
+  }
+
+  /* ───────── 텐아르 내보내기 파일 (홈 화면 앱용) ─────────
+     텐아르 조사구 「🗄 전체 백업」(tenar-area-backup) · 종류별 「JSON 공유」(tenar-area-plots) · 즐겨찾기 공유(favorites)
+     텐아르 암호 파일(PBKDF2-SHA256 + AES-GCM)은 텐아르에서 정한 암호로 엶 */
+  function fileBox() {
+    return '<label class="fld">텐아르 파일로 가져오기 (홈 화면 앱·다른 기기)</label>' +
+      '<p class="muted">텐아르 앱 › 조사구목록 › 「🗄 전체 백업」 또는 「📤 전체 공유」, 생산량 핀은 즐겨찾기 「공유」로 만든 파일을 고르세요. 텐아르에서 정한 파일 암호를 넣습니다.</p>' +
+      '<div class="row"><label class="btn" style="flex:1;text-align:center">📂 텐아르 파일 고르기<input type="file" id="tnFile" accept="application/json,.json" hidden></label></div>';
+  }
+  function bindFileBox(body) {
+    var inp = body.querySelector('#tnFile'); if (!inp) return;
+    inp.addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0]; if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () { openTenarFile(String(rd.result)); };
+      rd.readAsText(f);
+    });
+  }
+  function tenarFileDecrypt(o, pw) {
+    var enc = new TextEncoder();
+    return crypto.subtle.importKey('raw', enc.encode(String(pw)), { name: 'PBKDF2' }, false, ['deriveKey']).then(function (base) {
+      return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64u8(o.salt), iterations: o.iterations || 210000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+    }).then(function (k) { return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(o.iv) }, k, b64u8(o.ciphertext)); })
+      .then(function (pt) { return JSON.parse(new TextDecoder().decode(pt)); });
+  }
+  function tenarFileToSites(d) {
+    var out = [], cnt = {};
+    function add(cfgIdx, arr) {
+      var cfg = TENAR_TYPES[cfgIdx];
+      (arr || []).forEach(function (r) { var s = tenarToSite(cfg, r); if (s) { out.push(s); cnt[cfg.label] = (cnt[cfg.label] || 0) + 1; } });
+    }
+    if (d && d.type === 'tenar-area-backup' && d.types) Object.keys(d.types).forEach(function (k) { if (TENAR_KEYMAP[k] != null) add(TENAR_KEYMAP[k], d.types[k]); });
+    else if (d && d.type === 'tenar-area-plots' && Array.isArray(d.plots)) add(TENAR_KEYMAP[d.areaType] != null ? TENAR_KEYMAP[d.areaType] : 0, d.plots);
+    else if (d && Array.isArray(d.favorites)) add(7, d.favorites);
+    else if (Array.isArray(d)) add(0, d);   /* 아주 예전 형식: 조사구 배열 */
+    return { sites: out, cnt: cnt };
+  }
+  function openTenarFile(text) {
+    var o; try { o = JSON.parse(text); } catch (e) { A().toast('텐아르 파일이 아닙니다'); return; }
+    if (o && o.odigoSecure) { A().toast('어디고 파일입니다. ⓘ › 「자료 파일 가져오기」로 여세요'); return; }
+    function done(d) {
+      var r = tenarFileToSites(d);
+      if (!r.sites.length) { A().toast('이 파일에서 가져올 텐아르 핀을 찾지 못했습니다 (위치 없는 핀 제외)'); return; }
+      var desc = Object.keys(r.cnt).map(function (k) { return k + ' ' + r.cnt[k]; }).join(' · ');
+      A().previewMerge({ sites: r.sites, visits: [] }, { title: '텐아르 파일 → 농어업과 (' + desc + ')', from: '텐아르 파일', sites: r.sites.length });
+    }
+    if (o && o.tenarSecure === true && o.secureType === 'password-file') {
+      var body = A().openSheet('텐아르 파일 암호', '<p class="muted">텐아르에서 이 파일을 만들 때 정한 암호를 넣으세요. (어디고 공통 암호 2026과 다를 수 있습니다)</p>' +
+        '<input class="inp" id="tnPw" type="password" autocomplete="off">' +
+        '<div class="row"><button class="btn primary full" id="tnOpen">열기</button></div>');
+      var pw = body.querySelector('#tnPw'); pw.focus();
+      body.querySelector('#tnOpen').addEventListener('click', function () {
+        tenarFileDecrypt(o, pw.value).then(done, function () { A().toast('암호가 맞지 않거나 파일이 손상되었습니다'); pw.select(); });
+      });
+      return;
+    }
+    done(o);
   }
 
   window.OdigoFiles = { openExport: openExport, openExcel: openExcel, template: templateFile, openTenarImport: openTenarImport };
