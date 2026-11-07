@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- 어디고 odigo v3.4 (2026-11-07) 조사구 삭제 — ⓘ › 🗑 조사구 삭제(모든 업무·미분류·분야·조사 유형·작물 범위, 하나씩 고르기), 분야 목록 아래 「이 업무 삭제」·「골라서 삭제」. 건수 확인·먼저 백업 버튼·「삭제」 입력 후 지움, 방문 기록 함께, 내 설정은 남김. ⓘ에 「📂 텐아르 파일 가져오기(앱→앱)」 바로가기 -->
+<!-- 어디고 odigo v3.5 (2026-11-07) 교통상황 색을 국가교통정보센터 지도와 같은 「제한속도 대비」(원활 80%↑·서행 40~80%·정체 40%↓) 기준으로 — 표준노드링크 MAX_SPD 를 도로 자료에 추가해 다시 만듦(data/links), 선 굵게·ITS 비슷한 색. 핀은 텐아르 방식: 기본 동그라미가 좌표 가운데에 놓여 가까운 핀이 겹쳐 보임, 이름표는 상자 없이 진한 파란 글자 + 흰 테두리 -->
+<!-- (이전) 어디고 odigo v3.4 (2026-11-07) 조사구 삭제 — ⓘ › 🗑 조사구 삭제(모든 업무·미분류·분야·조사 유형·작물 범위, 하나씩 고르기), 분야 목록 아래 「이 업무 삭제」·「골라서 삭제」. 건수 확인·먼저 백업 버튼·「삭제」 입력 후 지움, 방문 기록 함께, 내 설정은 남김. ⓘ에 「📂 텐아르 파일 가져오기(앱→앱)」 바로가기 -->
 <!-- (이전) 어디고 odigo v3.3 (2026-11-07) 핀 위치 밀림 수정 — v2.9부터 핀 바깥 상자에 position:relative 가 들어가 MapLibre 마커 위치(absolute)를 덮어써, 핀이 좌표 대신 위에서부터 차례로 쌓이고 지도 이동 때 따라 움직이던 문제(핀이 많을수록 길게 늘어섬). 마커는 absolute 로 고정 -->
 <!-- (이전) 어디고 odigo v3.2 (2026-11-07) 텐아르 내보내기 파일로 가져오기 — 홈 화면에 설치한 앱은 앱마다 저장 공간이 따로라 「이 기기」 읽기가 안 됨 → 텐아르 「전체 백업」(tenar-area-backup)·종류별 공유(tenar-area-plots)·즐겨찾기 공유(favorites) 파일을 텐아르 암호로 열어 농어업과 업무로 가져옴 -->
 <!-- (이전) 어디고 odigo v3.1 (2026-11-07) 텐아르 핀 가져오기 — 같은 휴대폰·같은 브라우저에 저장된 텐아르 조사구 7종(작물재배→재배면적, 가축, 축비, 농비, 쌀값, 농판, 기타조사→기타농업)과 생산량 핀(작물 포함)을 농어업과 업무로 가져옴. 텐아르 기기키로 읽기만(텐아르 자료 변경 없음), 전화번호·담당자 연락처 제외, 같은 핀 다시 가져오면 겹치지 않음. ⓘ › 텐아르 -->
@@ -50,7 +51,7 @@
 <meta name="application-name" content="어디고">
 <meta name="theme-color" content="#f07a22">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
-<link rel="stylesheet" href="css/odigo.css?v=3.4">
+<link rel="stylesheet" href="css/odigo.css?v=3.5">
 </head>
 <body>
 
@@ -129,11 +130,11 @@
 <div id="gpsStatus" class="gps-status" hidden></div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
-<script src="js/nearby.js?v=3.4"></script>
-<script src="js/store.js?v=3.4"></script>
-<script src="js/odigo.js?v=3.4"></script>
-<script src="js/layers.js?v=3.4"></script>
-<script src="js/safety.js?v=3.4"></script>
-<script src="js/files.js?v=3.4"></script>
+<script src="js/nearby.js?v=3.5"></script>
+<script src="js/store.js?v=3.5"></script>
+<script src="js/odigo.js?v=3.5"></script>
+<script src="js/layers.js?v=3.5"></script>
+<script src="js/safety.js?v=3.5"></script>
+<script src="js/files.js?v=3.5"></script>
 </body>
 </html>

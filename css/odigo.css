@@ -447,3 +447,18 @@ body.pin-labels .pin-label { display: block; }
 .maplibregl-marker.me-wrap { position: absolute; }
 /* 이름표·오늘 표는 핀 위치 계산(아래 끝 = 좌표)에 끼지 않게 띄워서 표시 */
 .maplibregl-marker.pin-wrap .pin-label { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 1px; }
+
+/* ═════════ v3.5 텐아르 방식 핀·이름표 ═════════ */
+/* 물방울이 아닌 모양은 가운데가 좌표 → 아래 여백 없앰 */
+.maplibregl-marker.pin-wrap:not(.w-drop) { padding-bottom: 0; }
+/* 텐아르처럼 조금 작은 동그라미, 흰 테두리 */
+.pin.s-circle { width: 26px; height: 26px; border-width: 2px; }
+.pin.s-circle i { font-size: 12px; }
+/* 이름표: 상자 없이 진한 파란 글자 + 흰 테두리 (텐아르 「작물재배」 글자와 같은 방식) */
+.maplibregl-marker.pin-wrap .pin-label {
+  background: none; box-shadow: none; border-radius: 0; padding: 0; max-width: 160px;
+  color: #13307a; font-size: 12.5px; font-weight: 900; letter-spacing: -.02em;
+  text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0 0 3px #fff;
+}
+.maplibregl-marker.w-drop .pin-label { margin-top: 0; }
+.maplibregl-marker.pin-wrap:not(.w-drop) .pin-label { margin-top: 2px; }

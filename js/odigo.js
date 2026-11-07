@@ -1,4 +1,5 @@
 /* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4) · v2.8: 나 조사하러 간다(safety.js) 연결·안전 연락 설정·공유 위치 링크 열기
+   · v3.5: 텐아르 방식 핀 — 기본 동그라미(좌표 가운데에 놓여 가까운 핀은 겹쳐 보임), 이름표는 상자 없이 테두리 글자
    · v3.4: 조사구 삭제(전체·업무별·선택), 텐아르 파일 가져오기 버튼을 ⓘ에 바로
    · v3.2: 텐아르 내보내기 파일로도 가져오기(홈 화면 앱은 저장소가 따로)
    · v3.1: 텐아르 핀 가져오기(files.js), 가져온 자료는 이름이 같으면 최신으로 갱신
@@ -14,7 +15,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v3.4';
+  var APP_VERSION = 'v3.5';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -59,7 +60,7 @@
   function pinStyleOf(divId, typeId) {
     var P = (db.profile && db.profile.pinStyle) || {};
     var ps = P[styleKey(divId, typeId)] || {};
-    return { color: ps.color || defaultColor(divId, typeId), shape: ps.shape || 'drop' };
+    return { color: ps.color || defaultColor(divId, typeId), shape: ps.shape || 'circle' };   /* v3.5: 기본 = 텐아르처럼 동그라미 */
   }
   function labelFieldsOf(divId, typeId) { var L = (db.profile && db.profile.pinLabel) || {}; var pl = L[styleKey(divId, typeId)]; return Array.isArray(pl) ? pl : DEFAULT_LABEL; }
   function floorCard(s) { return [s.floor, s.card].filter(function (x) { return x != null && String(x).trim() !== ''; }).join('-'); }
@@ -222,13 +223,14 @@
     visibleSites().forEach(function (s) {
       if (!isFinite(s.lat) || !isFinite(s.lng)) return;
       var ord = todayOrderOf(s.id), el = document.createElement('div'), ps = pinStyleOf(s.division, s.type), lb = labelText(s);
-      el.className = 'pin-wrap';
+      el.className = 'pin-wrap w-' + ps.shape;
       el.innerHTML = '<div class="pin s-' + ps.shape + (ord ? ' today' : '') + (ord && visitedToday(s.id) ? ' visited' : '') + '" style="--pc:' + ps.color + '"><i>' + (seqCache[s.id] || '') + '</i></div>' +
         (ord ? '<span class="pin-today">' + ord + '</span>' : '') +
         (lb ? '<span class="pin-label">' + esc(lb) + '</span>' : '');
       el.title = s.name + ' · ' + siteLabel(s);
       el.addEventListener('click', function (ev) { ev.stopPropagation(); openSite(s.id); });
-      var m = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([s.lng, s.lat]).addTo(map);
+      /* 물방울은 끝이 좌표, 나머지 모양은 가운데가 좌표 (텐아르 동그라미 핀과 같이 겹쳐 보임) */
+      var m = new maplibregl.Marker({ element: el, anchor: ps.shape === 'drop' ? 'bottom' : 'center' }).setLngLat([s.lng, s.lat]).addTo(map);
       m.getElement().style.zIndex = ord ? 3 : 2;
       markers[s.id] = m;
     });

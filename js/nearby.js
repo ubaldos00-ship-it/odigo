@@ -5,6 +5,7 @@
    · v2.1: 교통 CCTV 영상 (ITS 실시간, 누를 때만 재생)
    · v2.2: 교통상황 (ITS 실시간 속도 + 표준노드링크 도로 모양)
    · v2.3: 치안·안전정보 지도 (생활안전지도 치안사고통계(전체) WMS)
+   · v3.5: 교통상황 색 기준을 ITS 지도와 같은 제한속도 대비(80%/40%)로, 선 굵게
    · v2.6: 교통상황을 레이어 패널에서도 켜고 끌 수 있게 setTraffic·isOn 공개
    · v2.4: 치안 지도를 레이어 패널(layers.js)의 브이월드 중첩(경계·지적 등)보다 아래에 놓음
    · 연결 전 항목은 스위치 잠금·「준비 중」 — 임의 자료를 실제처럼 그리지 않는다.
@@ -25,7 +26,7 @@
     { id: 'traffic', ico: '≋', color: '#2f9e44', name: '교통상황', stage: '2차',
       provider: '국가교통정보센터(ITS) · 교통소통정보 + 표준노드링크',
       basis: '실시간 · 켜져 있을 때 2분마다 갱신 · 15분 지난 관측은 정보 없음', status: 'live',
-      note: '상태는 어디고 기준: 고속·도시고속 70/40km/h, 그 외 30/15km/h. 경로 계산은 하지 않습니다.' },
+      note: '상태는 국가교통정보센터 지도와 같은 제한속도 대비 기준: 원활 80% 이상 · 서행 40~80% · 정체 40% 미만. 경로 계산은 하지 않습니다.' },
     { id: 'cctvVideo', ico: '▶', color: '#1c7ed6', name: '교통 CCTV 영상', stage: '2차',
       provider: '국가교통정보센터(ITS) · 고속도로·국도 CCTV',
       basis: '실시간 · 재생을 누를 때만 영상을 불러옵니다', status: 'live',
@@ -394,11 +395,12 @@
   /* ═════════════ 교통상황 — ITS 교통소통정보 + 표준노드링크 도로 모양 (v2.2) ═════════════
      · 도로 모양: data/links/major(고속·국도·시도 등, 확대 11↑), minor(시군도, 확대 14↑) — 도구/build_links.py
      · 속도: 화면 범위만 ITS trafficInfo 실시간 조회, 켜져 있고 화면이 보일 때만 2분마다 갱신
-     · 상태: ITS는 속도만 줌 → 어디고 기준(도로 등급별 속도)으로 판정, 범례에 명시
+     · 상태(v3.5): 국가교통정보센터 지도와 같은 「제한속도 대비」 기준 — 원활 80% 이상, 서행 40~80%, 정체 40% 미만
+       (제한속도 = 표준노드링크 MAX_SPD. 제한속도가 없는 구간만 예전 어디고 기준 고속 70/40·그 외 30/15km/h)
      · 15분보다 오래된 관측·속도 없음 = 「정보 없음」(회색 점선) — 오래된 자료를 실시간처럼 칠하지 않음 */
   var LINK_DIR = 'data/links/';
   var TRAFFIC_MIN_ZOOM = 11, MINOR_MIN_ZOOM = 14, TRAFFIC_REFRESH_MS = 120000, STALE_MIN = 15;
-  var TRAFFIC_COLORS = { 1: '#2f9e44', 2: '#f59f00', 3: '#e03131', 0: '#adb5bd' };
+  var TRAFFIC_COLORS = { 1: '#2b9a3e', 2: '#f2b705', 3: '#d9230f', 0: '#adb5bd' };   /* ITS 지도와 비슷한 초록·노랑·빨강 */
   var TRAFFIC_LABEL = { 1: '원활', 2: '서행', 3: '정체', 0: '정보 없음' };
   var linkMeta = null, linkMetaP = null, linkCells = {}, links = {};   /* links[linkId] = {name, rank, coords} */
   var speeds = {}, trafficObservedAt = '', trafficLayersAdded = false, trafficTimer = null, trafficInterval = null, trafficAbort = null, trafficPopup = null, trafficHintShown = false;
@@ -416,16 +418,17 @@
       d.l.forEach(function (r) {
         var e = r[3], co = [], x = 0, y = 0;
         for (var i = 0; i < e.length; i += 2) { x += e[i]; y += e[i + 1]; co.push([x / 1e5, y / 1e5]); }
-        links[r[0]] = { name: d.n[r[1]] || '', rank: r[2], coords: co };
+        links[r[0]] = { name: d.n[r[1]] || '', rank: r[2], coords: co, ms: r[4] || 0 };
       });
       return true;
     }).catch(function () { delete linkCells[key]; throw new Error('cell'); });
     return linkCells[key];
   }
-  function trafficStatus(rank, spd, t) {
+  function trafficStatus(rank, spd, t, ms) {
     if (spd == null || !t) return 0;
     var y = +t.slice(0, 4), mo = +t.slice(4, 6) - 1, d = +t.slice(6, 8), h = +t.slice(8, 10), mi = +t.slice(10, 12);
     if ((Date.now() - new Date(y, mo, d, h, mi).getTime()) / 60000 > STALE_MIN) return 0;   /* 기기 시각 = 한국 시간 가정 */
+    if (ms > 0) { var q = spd / ms; return q >= 0.8 ? 1 : q >= 0.4 ? 2 : 3; }   /* ITS 지도와 같은 제한속도 대비 */
     var fast = rank === 101 || rank === 102;   /* 고속국도·도시고속도로 */
     if (fast) return spd >= 70 ? 1 : spd >= 40 ? 2 : 3;
     return spd >= 30 ? 1 : spd >= 15 ? 2 : 3;
@@ -445,7 +448,7 @@
     map.addLayer({ id: 'nb-traffic-line', type: 'line', source: 'nb-traffic', filter: ['>', ['get', 'st'], 0], minzoom: TRAFFIC_MIN_ZOOM,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: { 'line-color': ['match', ['get', 'st'], 1, TRAFFIC_COLORS[1], 2, TRAFFIC_COLORS[2], 3, TRAFFIC_COLORS[3], TRAFFIC_COLORS[0]],
-        'line-width': ['interpolate', ['linear'], ['zoom'], 11, 1.8, 14, 3, 17, 5], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, 0.8, 16, 2.5], 'line-opacity': 0.9 } }, before);
+        'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2, 14, 3.5, 17, 6], 'line-offset': ['interpolate', ['linear'], ['zoom'], 11, 1, 16, 3], 'line-opacity': 0.95 } }, before);
     ['nb-traffic-line', 'nb-traffic-none'].forEach(function (id) {
       map.on('click', id, function (e) { var f = e.features && e.features[0]; if (f) showTrafficPopup(f.properties.lid, e.lngLat); });
       map.on('mouseenter', id, function () { map.getCanvas().style.cursor = 'pointer'; });
@@ -475,7 +478,7 @@
       if (!inView) return;
       var sp = speeds[lid];
       feats.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: c },
-        properties: { lid: lid, st: trafficStatus(L.rank, sp ? sp.v : null, sp ? sp.t : '') } });
+        properties: { lid: lid, st: trafficStatus(L.rank, sp ? sp.v : null, sp ? sp.t : '', L.ms) } });
     });
     map.getSource('nb-traffic').setData({ type: 'FeatureCollection', features: feats });
   }
@@ -525,18 +528,18 @@
   }
   function showTrafficPopup(lid, lngLat) {
     var L = links[lid]; if (!L) return;
-    var sp = speeds[lid] || {}, st = trafficStatus(L.rank, sp.v, sp.t);
+    var sp = speeds[lid] || {}, st = trafficStatus(L.rank, sp.v, sp.t, L.ms);
     var RANK = { 101: '고속국도', 102: '도시고속도로', 103: '일반국도', 104: '특별·광역시도', 105: '국가지원지방도', 106: '지방도', 107: '시군도' };
     var wrap = document.createElement('div');
     wrap.className = 'pub-pop';
     wrap.innerHTML = '<div class="pub-tag">공공데이터 · 교통상황</div><b>' + esc(L.name || '도로명 없음') + '</b>' +
       '<table class="kv">' +
       '<tr><th>상태</th><td><span class="tr-dot" style="background:' + TRAFFIC_COLORS[st] + '"></span>' + TRAFFIC_LABEL[st] + '</td></tr>' +
-      '<tr><th>평균속도</th><td>' + (sp.v != null && st ? sp.v + ' km/h' : '정보 없음') + '</td></tr>' +
+      '<tr><th>평균속도</th><td>' + (sp.v != null && st ? sp.v + ' km/h' + (L.ms ? ' <small>(제한 ' + L.ms + ' 의 ' + Math.round(sp.v / L.ms * 100) + '%)</small>' : '') : '정보 없음') + '</td></tr>' +
       '<tr><th>도로</th><td>' + esc(RANK[L.rank] || '기타') + (sp.dir ? ' · ' + esc(sp.dir) : '') + '</td></tr>' +
       '<tr><th>관측시각</th><td>' + esc(fmtObs(sp.t)) + '</td></tr>' +
       '</table>' +
-      '<div class="src">국가교통정보센터(ITS) · 상태는 어디고 기준(도로 등급별 속도) 판정 · 구간 ' + esc(lid) + '</div>';
+      '<div class="src">국가교통정보센터(ITS) · 상태 = 제한속도 대비(원활 80%↑·서행 40~80%·정체 40%↓, ITS 지도와 같은 기준) · 구간 ' + esc(lid) + '</div>';
     if (trafficPopup) trafficPopup.remove();
     trafficPopup = new maplibregl.Popup({ maxWidth: '280px', closeOnClick: true }).setLngLat(lngLat).setDOMContent(wrap).addTo(app().map);
   }
@@ -823,7 +826,7 @@
         (L.id === 'parking' ? '<div class="nb-legend"><span class="lg" style="background:#1971c2">P</span>공영 <span class="lg" style="background:#868e96">P</span>민영 · 확대 ' + PARK_MIN_ZOOM + ' 이상에서 표시</div>' +
           '<div class="row" style="margin:8px 0 0"><button class="btn" id="nbParkMe">🧭 내 주변 주차장</button></div>' : '') +
         (L.id === 'cctvLoc' ? '<div class="nb-legend"><span class="lg" style="background:#495057">◉</span>설치 위치 · 확대 ' + CCTV_MIN_ZOOM + ' 이상에서 표시 · 영상 없음</div>' : '') +
-        (L.id === 'traffic' ? '<div class="nb-legend"><span class="tr-bar" style="background:#2f9e44"></span>원활 <span class="tr-bar" style="background:#f59f00"></span>서행 <span class="tr-bar" style="background:#e03131"></span>정체 <span class="tr-bar dash"></span>정보 없음 · 확대 ' + TRAFFIC_MIN_ZOOM + ' 이상 (시군도 ' + MINOR_MIN_ZOOM + ' 이상)</div>' : '') +
+        (L.id === 'traffic' ? '<div class="nb-legend"><span class="tr-bar" style="background:' + TRAFFIC_COLORS[1] + '"></span>원활 <span class="tr-bar" style="background:' + TRAFFIC_COLORS[2] + '"></span>서행 <span class="tr-bar" style="background:' + TRAFFIC_COLORS[3] + '"></span>정체 <span class="tr-bar dash"></span>정보 없음 · 확대 ' + TRAFFIC_MIN_ZOOM + ' 이상 (시군도 ' + MINOR_MIN_ZOOM + ' 이상)</div>' : '') +
         (L.id === 'cctvVideo' ?'<div class="nb-legend"><span class="lg" style="background:#1c7ed6">▶</span>고속도로·국도 · 확대 ' + VCAM_MIN_ZOOM + ' 이상에서 표시</div>' : '') +
         (L.id === 'safety' ? '<div class="nb-legend sf-legend">' + [1, 2, 3, 4, 5].map(function (g) {
             return '<span><img src="https://www.safemap.go.kr/images/icon_new/security_' + (g * 2) + '.svg" alt="">' + g + '등급</span>'; }).join('') +
