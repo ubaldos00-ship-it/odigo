@@ -221,7 +221,7 @@
     if (parkPopup) parkPopup.remove();
     var wrap = document.createElement('div');
     wrap.className = 'pub-pop';
-    wrap.innerHTML = parkHtml(p) + '<button class="btn primary full" data-nav>🚗 이 주차장으로 길찾기</button>';
+    wrap.innerHTML = parkHtml(p) + (app().mapAppBtns ? app().mapAppBtns(p.n, p.la, p.lo) : '') + '<button class="btn primary full" data-nav>🚗 이 주차장으로 길찾기</button>';
     wrap.querySelector('[data-nav]').addEventListener('click', function () { app().openNav(p.n, p.la, p.lo); });
     /* 팝업이 위쪽 검색창에 가리지 않도록 주차장을 화면 아래쪽(약 3/4 높이)으로 옮긴 뒤 띄움 */
     map.easeTo({ center: [p.lo, p.la], offset: [0, Math.round(map.getContainer().clientHeight * 0.22)], duration: 300 });
@@ -381,7 +381,7 @@
     wrap.className = 'pub-pop';
     wrap.innerHTML = '<div class="pub-tag">공공데이터 · CCTV 설치 위치</div>' +
       '<b>' + esc(purposes) + '</b>' +
-      '<div class="pop-addr">' + esc(c[4] || '') + '</div>' +
+      '<div class="pop-addr">' + esc(c[4] || '') + '</div>' + (app().mapAppBtns ? app().mapAppBtns('CCTV ' + (c[4] || ''), c[0], c[1]) : '') +
       '<table class="kv">' +
       '<tr><th>카메라</th><td>' + c[2] + '대</td></tr>' +
       (c[7] ? '<tr><th>촬영방면</th><td>' + esc(c[7]) + ' <span class="muted">(제공값)</span></td></tr>' : '') +
@@ -654,7 +654,7 @@
     if (vcamPopup) vcamPopup.remove();
     var wrap = document.createElement('div');
     wrap.className = 'pub-pop';
-    wrap.innerHTML = '<div class="pub-tag">공공데이터 · 교통 CCTV</div><b>' + esc(c.name) + '</b>' +
+    wrap.innerHTML = '<div class="pub-tag">공공데이터 · 교통 CCTV</div><b>' + esc(c.name) + '</b>' + (app().mapAppBtns ? app().mapAppBtns(c.name, c.lat, c.lng) : '') +
       '<table class="kv"><tr><th>도로</th><td>' + (c.type === 'ex' ? '고속도로' : '국도') + '</td></tr>' +
       '<tr><th>영상 제공</th><td>' + (c.url ? '예 · 실시간 (' + esc(c.fmt || '스트리밍') + ')' : '아니오') + '</td></tr></table>' +
       '<p class="crime-note" style="margin:0 0 6px">점검·장애로 영상이 나오지 않을 수 있으며, 카메라가 목적지 전체를 비추지 않습니다.</p>' +

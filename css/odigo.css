@@ -500,3 +500,72 @@ body.pin-labels .maplibregl-marker.pin-wrap .pin-label { display: block; }
 .ap-bot { top: 100%; margin-top: 3px; font-size: 12px; font-weight: 700; color: #7c2d12; text-shadow: -1.6px 0 #fff, 1.6px 0 #fff, 0 -1.6px #fff, 0 1.6px #fff, -1.2px -1.2px 0 #fff, 1.2px 1.2px 0 #fff, -1.2px 1.2px 0 #fff, 1.2px -1.2px 0 #fff; }
 .alt-view { position: fixed; }
 .alt-me { position: absolute; left: 10px; bottom: calc(48px + var(--safe-b)); z-index: 5; border: 1.5px solid rgba(0,0,0,.15); background: #fff; border-radius: 22px; padding: 9px 14px; font-size: 13.5px; font-weight: 800; color: #1c7ed6; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+
+/* ═════════ v3.8 ═════════ */
+/* 1. 레벨 옆 KAKAO·NAVER (레벨과 같은 크기) */
+.lv-row { display: flex; gap: 4px; align-items: center; }
+.lv-row .zoom-level, .lv-row button { height: 22px; line-height: 22px; padding: 0 7px; font-size: 11.5px; font-weight: 800; border-radius: 6px; border: 0; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.lv-row .qm-kakao { background: #fee500; color: #3a1d1d; }
+.lv-row .qm-naver { background: #03c75a; color: #fff; }
+.quick-maps { display: none !important; }
+/* 2. 오른쪽 분야 버튼 한 칸 아래로 */
+.div-col { top: calc(118px + env(safe-area-inset-top, 0px)); }
+/* 3·4. 핀·글자 크기 = 텐아르 확대 단계별 값 (--pd 지름, --ph 둘레 빛, --pn 번호, --pt 위 글자, --pb 아래 글자) */
+.pin.s-circle { width: var(--pd, 22px); height: var(--pd, 22px); border-width: 1.6px;
+  box-shadow: 0 0 0 var(--ph, 5px) color-mix(in srgb, var(--pc) 16%, transparent), 0 1px 3px rgba(0,0,0,.3); }
+.pin.s-circle i { font-size: var(--pn, 11px); }
+.pin.s-drop { width: calc(var(--pd, 22px) * 1.15); height: calc(var(--pd, 22px) * 1.15); border-width: 1.6px; }
+.pin.s-square, .pin.s-diamond { width: calc(var(--pd, 22px) * .95); height: calc(var(--pd, 22px) * .95); border-width: 1.6px; }
+.pin.s-triangle { width: calc(var(--pd, 22px) * 1.25); height: calc(var(--pd, 22px) * 1.1); }
+.pin.s-star { width: calc(var(--pd, 22px) * 1.35); height: calc(var(--pd, 22px) * 1.35); }
+.pin.s-drop i, .pin.s-square i, .pin.s-diamond i, .pin.s-triangle i, .pin.s-star i { font-size: var(--pn, 11px); }
+.pin.today { outline-width: 2px; }
+.pin-today { transform: scale(.85); }
+.maplibregl-marker.pin-wrap .pin-top { font-size: var(--pt, 12px); }
+.maplibregl-marker.pin-wrap .pin-label { font-size: var(--pb, 11px); }
+.ap { width: var(--pd, 22px); height: var(--pd, 22px); }
+.ap-dot { border-width: 1.6px; font-size: var(--pn, 11px); box-shadow: 0 0 0 var(--ph, 5px) rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.35); }
+.ap-top { font-size: var(--pt, 12px); }
+.ap-bot { font-size: var(--pb, 11px); }
+/* 5. 드롭다운 제목은 첫 칸에 */
+.flt span { display: none; }
+/* 8. 카카오맵·네이버지도 앱 버튼 */
+.mapapps { display: flex; gap: 5px; margin: 4px 0 6px; }
+.mapapps button { border: 0; border-radius: 6px; padding: 4px 8px; font-size: 11.5px; font-weight: 800; }
+.ma-k { background: #fee500; color: #3a1d1d; }
+.ma-n { background: #03c75a; color: #fff; }
+/* 9·14. 시트: 지도 가리지 않음(뒤 배경 없음) · 위 막대로 크기 조절 · 접기 */
+.sheet { max-height: 60vh; }
+.sheet-grab { flex: none; height: 18px; display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; }
+.sheet-grab span { width: 42px; height: 5px; border-radius: 3px; background: #c9cfcc; }
+.sheet-head { padding-top: 2px; }
+.sheet.min { height: auto !important; max-height: none !important; }
+.sheet.min .sheet-body { display: none; }
+/* 11·12. 목록 행: #번호 · 리동 주소 · 메모 · 수정·삭제 */
+.plist-item { cursor: pointer; }
+.plist-item .row-memo { display: block; font-size: 12px; color: #7c4a03; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-acts { flex: none; display: flex; flex-direction: column; gap: 4px; }
+.ra { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 3px 8px; font-size: 11.5px; }
+.ra.del { color: #c92a2a; }
+/* 13. 입력창 */
+.req { color: #e03131; }
+.addr-row { display: flex; gap: 6px; align-items: center; }
+.addr-row .inp { flex: 1; min-width: 0; }
+.f-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+.warn-t { color: #c92a2a; }
+/* 지도에서 위치 수정 */
+.move-bar { position: fixed; z-index: 30; left: 10px; right: 10px; top: calc(64px + env(safe-area-inset-top, 0px)); background: #fff; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.25); padding: 10px 12px; font-size: 13.5px; font-weight: 700; }
+.move-bar .row { margin: 8px 0 0; }
+.pin.moving { outline: 3px solid #fff; box-shadow: 0 0 0 6px rgba(28,126,214,.35); }
+/* v3.8 추가 모양 6가지 (육각·오각·팔각·역삼각·십자·도넛) — 크기는 확대 단계 값(--pd) 따라감 */
+.pin.s-hexagon, .pin.s-pentagon, .pin.s-octagon, .pin.s-tridown, .pin.s-cross { transform: none; border: 0; border-radius: 0; box-shadow: none; filter: drop-shadow(0 0 1.2px #fff) drop-shadow(0 1px 2px rgba(0,0,0,.45)); width: calc(var(--pd, 22px) * 1.12); height: calc(var(--pd, 22px) * 1.12); }
+.pin.s-hexagon { clip-path: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%); }
+.pin.s-pentagon { clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }
+.pin.s-octagon { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
+.pin.s-tridown { clip-path: polygon(0 0, 100% 0, 50% 100%); width: calc(var(--pd, 22px) * 1.25); }
+.pin.s-tridown i { margin-top: calc(var(--pd, 22px) * -.3); }
+.pin.s-cross { clip-path: polygon(33% 0, 67% 0, 67% 33%, 100% 33%, 100% 67%, 67% 67%, 67% 100%, 33% 100%, 33% 67%, 0 67%, 0 33%, 33% 33%); }
+.pin.s-pentagon i { margin-top: calc(var(--pd, 22px) * .08); }
+.pin.s-ring { transform: none; border-radius: 50%; background: #fff; border: calc(var(--pd, 22px) * .26) solid var(--pc); width: var(--pd, 22px); height: var(--pd, 22px); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.pin.s-ring i { color: var(--pc); font-size: calc(var(--pn, 11px) * .85); }
+.pin.s-hexagon i, .pin.s-pentagon i, .pin.s-octagon i, .pin.s-tridown i, .pin.s-cross i { transform: none; font-size: var(--pn, 11px); }

@@ -1,4 +1,4 @@
-/* 어디고 v2.8 — 「나 조사하러 간다」 (v2.9: 네이버지도 링크 추가·문자 번호 기억) 현장 안전 연락 (설계: 설계/v2.4 10장)
+/* 어디고 v2.8 — 「나 조사하러 간다」 (v2.9: 네이버지도 링크 추가·문자 번호 기억 · v3.8: 카톡에 카카오맵·네이버지도 링크 — go.html 경유 목록형 메시지) 현장 안전 연락 (설계: 설계/v2.4 10장)
    · 누를 때 GPS를 한 번만 조회 → 미리보기(현재 위치·GPS 시각·정확도·조사 목적지, 각각 지도 링크)
    · 보내기: 카카오톡 공유(공식 JS SDK, 사용자가 방을 고름) · 문자 작성 화면(기본 번호) · 문구 복사
      실제 전송은 카톡·문자 앱에서 사용자가 누름. 어디고는 위치를 서버로 보내지 않음
@@ -177,20 +177,39 @@
     }).then(function (ok) { if (!ok) sdkP = null; return ok; });
     return sdkP;
   }
+  /* v3.8: 카카오톡은 등록된 사이트 주소의 링크만 허용 → 어디고 go.html 이 카카오맵·네이버지도로 넘겨 줌 */
+  var ICON = ODIGO_URL + 'img/odigo-192.png';
+  function goLink(t, name, lat, lng) { var u = ODIGO_URL + 'go.html?t=' + t + '&lat=' + lat.toFixed(6) + '&lng=' + lng.toFixed(6) + '&n=' + encodeURIComponent(clean(name).slice(0, 40)); return { mobileWebUrl: u, webUrl: u }; }
   function shareKakao(c) {
     var prof = A().getProfile() || {}, room = (prof.safety || {}).kakaoRoom;
     ensureKakaoShare().then(function (ok) {
       if (!ok) { kakaoFail(); return; }
-      /* 카카오 text 템플릿은 본문 200자 제한·링크는 등록 도메인만 → 본문은 링크 없이, 지도는 버튼 2개(어디고 ?pin 링크) */
-      var text = c.edited ? c.text : compose(c, true);
-      text = text.replace(/https?:\/\/\S+/g, '').replace(/[ \t]+\n/g, '\n');
-      if (text.length > 200) text = text.slice(0, 197) + '…';
-      var buttons = [];
-      if (c.me) { var u1 = odigoPinLink('내 위치 ' + hm(c.me.at), c.me.lat, c.me.lng); buttons.push({ title: '현재 내 위치', link: { mobileWebUrl: u1, webUrl: u1 } }); }
-      if (c.target) { var u2 = odigoPinLink(c.target.name, c.target.lat, c.target.lng); buttons.push({ title: '조사 목적지', link: { mobileWebUrl: u2, webUrl: u2 } }); }
-      var main = buttons[0] ? buttons[0].link : { mobileWebUrl: ODIGO_URL, webUrl: ODIGO_URL };
+      var who = prof.nickname || '어디고 사용자', t = c.target, me = c.me;
+      var head = '[어디고 현장조사 알림] ' + who + (t ? ' · ' + clean(t.name) + ro(clean(t.name)) + ' 조사하러 갑니다' : ' · 현재 위치를 알립니다');
+      var meDesc = me ? 'GPS ' + hm(me.at) + ' · 정확도 약 ±' + Math.round(me.acc) + 'm' + (c.meAddr ? ' · ' + c.meAddr : '') : '';
       try {
-        Kakao.Share.sendDefault({ objectType: 'text', text: text, link: main, buttons: buttons.length ? buttons : undefined });
+        if (me && t) {
+          /* 목록형: 항목 2개(카카오맵) + 버튼 2개(네이버지도) = 링크 4개 */
+          Kakao.Share.sendDefault({
+            objectType: 'list', headerTitle: head.slice(0, 200), headerLink: goLink('k', t.name, t.lat, t.lng),
+            contents: [
+              { title: '📍 현재 내 위치 (카카오맵)', description: meDesc, imageUrl: ICON, link: goLink('k', '내 위치 ' + hm(me.at), me.lat, me.lng) },
+              { title: '🏁 조사 목적지 · ' + clean(t.name) + ' (카카오맵)', description: t.addr || '', imageUrl: ICON, link: goLink('k', t.name, t.lat, t.lng) }
+            ],
+            buttons: [
+              { title: '내 위치 네이버', link: goLink('n', '내 위치 ' + hm(me.at), me.lat, me.lng) },
+              { title: '목적지 네이버', link: goLink('n', t.name, t.lat, t.lng) }
+            ]
+          });
+        } else {
+          /* 위치가 하나뿐이면: 카드 1장 + 카카오맵·네이버지도 버튼 */
+          var L = me ? { name: '내 위치 ' + hm(me.at), lat: me.lat, lng: me.lng, desc: meDesc } : { name: t.name, lat: t.lat, lng: t.lng, desc: (t.addr || '') + (c.meNote ? ' · 현재 위치: ' + c.meNote : '') };
+          Kakao.Share.sendDefault({
+            objectType: 'feed',
+            content: { title: head.slice(0, 200), description: (me ? '📍 현재 내 위치 · ' : '🏁 조사 목적지 · ') + L.desc, imageUrl: ICON, link: goLink('k', L.name, L.lat, L.lng) },
+            buttons: [{ title: '카카오맵', link: goLink('k', L.name, L.lat, L.lng) }, { title: '네이버지도', link: goLink('n', L.name, L.lat, L.lng) }]
+          });
+        }
         A().toast(room ? '카카오톡에서 「' + room + '」 방을 골라 보내세요' : '카카오톡 공유 화면을 열었습니다');
       } catch (e) { kakaoFail(); }
     });

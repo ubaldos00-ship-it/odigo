@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- 어디고 go.html (v3.8, 2026-11-08) — 카카오톡 공유 메시지의 지도 링크를 카카오맵·네이버지도로 넘겨 주는 페이지.
+     카카오톡 공유는 등록된 사이트 주소(ubaldos00-ship-it.github.io)의 링크만 허용해서, 이 페이지를 거쳐 지도로 이동함.
+     ?t=k(카카오맵)|n(네이버지도)&lat=위도&lng=경도&n=이름 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>어디고 · 지도로 이동</title>
+<style>body{font-family:system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif;margin:0;padding:40px 20px;text-align:center;color:#19352e}a{display:inline-block;margin:8px;padding:12px 18px;border-radius:10px;font-weight:800;text-decoration:none}.k{background:#fee500;color:#3a1d1d}.n{background:#03c75a;color:#fff}</style>
+</head>
+<body>
+<p id="msg">지도로 이동하는 중…</p>
+<p><a class="k" id="lk" href="#">카카오맵으로 열기</a><a class="n" id="ln" href="#">네이버지도로 열기</a></p>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var lat = parseFloat(q.get('lat')), lng = parseFloat(q.get('lng')), t = q.get('t');
+  var name = String(q.get('n') || '위치').replace(/[,\n\r]/g, ' ').slice(0, 40);
+  if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) { document.getElementById('msg').textContent = '위치 정보가 올바르지 않습니다.'; return; }
+  var en = encodeURIComponent(name), la = lat.toFixed(6), lo = lng.toFixed(6);
+  var k = 'https://map.kakao.com/link/map/' + en + ',' + la + ',' + lo;
+  var n = 'https://map.naver.com/?lng=' + lo + '&lat=' + la + '&title=' + en;
+  document.getElementById('lk').href = k; document.getElementById('ln').href = n;
+  document.getElementById('msg').textContent = name + ' (' + la + ', ' + lo + ')';
+  location.replace(t === 'n' ? n : k);
+})();
+</script>
+</body>
+</html>

@@ -555,12 +555,21 @@
       clearTimeout(guard);
       if (kind === 'kakao') initKakao(c, z); else initNaver(c, z);
       buildAltBar(kind);
+      altVars();
       /* 빠른 버튼으로 열면 교통정보를 바로 켬 */
       if (altOpt.traffic) { var tb = $('altBar').querySelector('[data-ao="' + (kind === 'kakao' ? 'TRAFFIC' : 'traffic') + '"]'); if (tb && !tb.classList.contains('on')) tb.click(); }
       drawAlt();
       startWatch();
       $('altInfo').textContent = '조사 장소 ' + altPins().length + '곳 · 내 위치 확인 중…';
     });
+  }
+  /* v3.8: 대체 지도에서도 확대 단계에 따라 핀·글자 크기 (어디고 지도와 같은 값) */
+  function altVars() {
+    var z = null;
+    try { if (alt.kind === 'kakao' && alt.kmap) z = 19 - alt.kmap.getLevel(); else if (alt.kind === 'naver' && alt.nmap) z = alt.nmap.getZoom() - 1; } catch (e) {}
+    if (z == null || !A().pinVars) return;
+    var v = A().pinVars(z), el = $('altView');
+    Object.keys(v).forEach(function (k) { el.style.setProperty(k, v[k]); });
   }
   function initKakao(c, z) {
     var el = $('altKakao'); el.hidden = false; $('altNaver').hidden = true;
@@ -569,6 +578,7 @@
     if (!alt.kmap) {
       alt.kmap = new kakao.maps.Map(el, { center: ll, level: level });
       alt.kmap.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+      kakao.maps.event.addListener(alt.kmap, 'zoom_changed', altVars);
     } else { alt.kmap.relayout(); alt.kmap.setLevel(level); alt.kmap.setCenter(ll); }
     alt.kmap.setMapTypeId(st.base === 'Sat' ? kakao.maps.MapTypeId.HYBRID : kakao.maps.MapTypeId.ROADMAP);
     setTimeout(function () { try { alt.kmap.relayout(); alt.kmap.setCenter(ll); } catch (e) {} }, 200);
@@ -578,6 +588,7 @@
     var ll = new naver.maps.LatLng(c.lat, c.lng), nz = Math.max(6, Math.min(21, Math.round(z + 1)));
     if (!alt.nmap) {
       alt.nmap = new naver.maps.Map(el, { center: ll, zoom: nz, zoomControl: true, zoomControlOptions: { position: naver.maps.Position.RIGHT_CENTER } });
+      naver.maps.Event.addListener(alt.nmap, 'zoom_changed', altVars);
     } else { alt.nmap.setCenter(ll); alt.nmap.setZoom(nz); naver.maps.Event.trigger(alt.nmap, 'resize'); }
     alt.nmap.setMapTypeId(st.base === 'Sat' ? naver.maps.MapTypeId.HYBRID : naver.maps.MapTypeId.NORMAL);
   }
