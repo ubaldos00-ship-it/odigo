@@ -5,6 +5,7 @@
    · v2.1: 교통 CCTV 영상 (ITS 실시간, 누를 때만 재생)
    · v2.2: 교통상황 (ITS 실시간 속도 + 표준노드링크 도로 모양)
    · v2.3: 치안·안전정보 지도 (생활안전지도 치안사고통계(전체) WMS)
+   · v3.6: ITS 월 호출 한도 초과(4001)를 알아보고 「다음 달 1일 재개」 안내
    · v3.5: 교통상황 색 기준을 ITS 지도와 같은 제한속도 대비(80%/40%)로, 선 굵게
    · v2.6: 교통상황을 레이어 패널에서도 켜고 끌 수 있게 setTraffic·isOn 공개
    · v2.4: 치안 지도를 레이어 패널(layers.js)의 브이월드 중첩(경계·지적 등)보다 아래에 놓음
@@ -399,6 +400,25 @@
        (제한속도 = 표준노드링크 MAX_SPD. 제한속도가 없는 구간만 예전 어디고 기준 고속 70/40·그 외 30/15km/h)
      · 15분보다 오래된 관측·속도 없음 = 「정보 없음」(회색 점선) — 오래된 자료를 실시간처럼 칠하지 않음 */
   var LINK_DIR = 'data/links/';
+  /* ITS 응답 공통 확인 (v3.6): 월 호출 한도 초과(resultCode 4001)를 알아보고 언제 재개되는지 안내 */
+  var itsQuotaAt = 0;
+  function itsResumeText() {
+    var d = new Date(), n = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    return (n.getMonth() + 1) + '월 1일';
+  }
+  function itsJson(r) {
+    return r.json().catch(function () { return null; }).then(function (j) {
+      var code = j && j.header && String(j.header.resultCode);
+      if (code === '4001') { var e = new Error('quota'); e.quota = true; throw e; }
+      if (!r.ok || !j) throw new Error('http');
+      return j;
+    });
+  }
+  function itsQuotaToast() {
+    if (Date.now() - itsQuotaAt < 60000) return;
+    itsQuotaAt = Date.now();
+    app().toast('국가교통정보센터 이번 달 호출 한도가 다 차서 교통상황·교통 CCTV를 잠시 쓸 수 없습니다 · ' + itsResumeText() + ' 다시 열립니다(한도를 늘리면 바로 재개)');
+  }
   var TRAFFIC_MIN_ZOOM = 11, MINOR_MIN_ZOOM = 14, TRAFFIC_REFRESH_MS = 120000, STALE_MIN = 15;
   var TRAFFIC_COLORS = { 1: '#2b9a3e', 2: '#f2b705', 3: '#d9230f', 0: '#adb5bd' };   /* ITS 지도와 비슷한 초록·노랑·빨강 */
   var TRAFFIC_LABEL = { 1: '원활', 2: '서행', 3: '정체', 0: '정보 없음' };
@@ -501,7 +521,7 @@
     var sig = trafficAbort.signal;
     var u = 'https://openapi.its.go.kr:9443/trafficInfo?apiKey=' + encodeURIComponent(ITS_KEY) + '&type=all&minX=' + b.getWest().toFixed(5) + '&maxX=' + b.getEast().toFixed(5) +
       '&minY=' + b.getSouth().toFixed(5) + '&maxY=' + b.getNorth().toFixed(5) + '&getType=json';
-    var sp = fetch(u, { signal: sig }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+    var sp = fetch(u, { signal: sig }).then(itsJson).then(function (j) {
       var items = ((j.body || (j.response && j.response.body) || {}).items) || [];
       if (!Array.isArray(items)) items = [items];
       var latest = '';
@@ -515,7 +535,7 @@
     Promise.all([shapes, sp]).then(function () { if (!sig.aborted) renderTraffic(); })
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;
-        app().toast('교통상황을 불러오지 못했습니다 · 잠시 후 다시 시도');
+        if (err && err.quota) itsQuotaToast(); else app().toast('교통상황을 불러오지 못했습니다 · 잠시 후 다시 시도');
         if (!sig.aborted) renderTraffic();   /* 도로 모양은 그대로, 속도 없으면 「정보 없음」 */
       });
   }
@@ -558,7 +578,7 @@
   function itsCctv(type, s, w, n, e, signal) {
     var u = ITS_CCTV + '?apiKey=' + encodeURIComponent(ITS_KEY) + '&type=' + type + '&cctvType=1&minX=' + w.toFixed(5) + '&maxX=' + e.toFixed(5) +
       '&minY=' + s.toFixed(5) + '&maxY=' + n.toFixed(5) + '&getType=json';
-    return fetch(u, { signal: signal }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (j) {
+    return fetch(u, { signal: signal }).then(itsJson).then(function (j) {
       var d = (j.response && j.response.data) || j.data || [];
       if (!Array.isArray(d)) d = [d];
       return d.filter(function (x) { return x && x.cctvname; }).map(function (x) {
@@ -611,7 +631,7 @@
     if (vcamAbort) vcamAbort.abort();
     vcamAbort = new AbortController();
     var b = map.getBounds(), sig = vcamAbort.signal;
-    Promise.all(['ex', 'its'].map(function (t) { return itsCctv(t, b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), sig).catch(function (e) { return e && e.name === 'AbortError' ? [] : null; }); }))
+    Promise.all(['ex', 'its'].map(function (t) { return itsCctv(t, b.getSouth(), b.getWest(), b.getNorth(), b.getEast(), sig).catch(function (e) { if (e && e.quota) itsQuotaToast(); return e && (e.name === 'AbortError' || e.quota) ? [] : null; }); }))
       .then(function (res) {
         if (sig.aborted) return;
         if (res.every(function (x) { return x === null; })) { app().toast('교통 CCTV 정보를 불러오지 못했습니다'); return; }
@@ -698,7 +718,7 @@
         h.on(Hls.Events.MANIFEST_PARSED, function () { msg.hidden = true; video.play().catch(function () {}); });
         h.on(Hls.Events.ERROR, function (ev, data) { if (data && data.fatal) { fail('영상을 재생하지 못했습니다 (카메라 점검 또는 연결 문제).'); try { h.destroy(); } catch (e) {} } });
       });
-    }).catch(function () { fail('영상 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.'); });
+    }).catch(function (e) { fail(e && e.quota ? '국가교통정보센터 이번 달 호출 한도가 다 차서 영상을 열 수 없습니다. ' + itsResumeText() + ' 다시 열립니다.' : '영상 주소를 받지 못했습니다. 잠시 후 다시 시도해 주세요.'); });
   }
 
   /* ═════════════ 치안·안전정보 지도 — 생활안전지도 WMS 치안사고통계(전체) IF_0075 (v2.3) ═════════════

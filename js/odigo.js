@@ -1,4 +1,5 @@
 /* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4) · v2.8: 나 조사하러 간다(safety.js) 연결·안전 연락 설정·공유 위치 링크 열기
+   · v3.6: 확대·축소 버튼 왼쪽 아래 + 확대 단계 표시, 핀 제목 항상 표시(레이어에서 켜고 끄기), 작물재배는 읍면동별 색(텐아르와 같은 색), 검색창 아래 KAKAO·NAVER 빠른 버튼
    · v3.5: 텐아르 방식 핀 — 기본 동그라미(좌표 가운데에 놓여 가까운 핀은 겹쳐 보임), 이름표는 상자 없이 테두리 글자
    · v3.4: 조사구 삭제(전체·업무별·선택), 텐아르 파일 가져오기 버튼을 ⓘ에 바로
    · v3.2: 텐아르 내보내기 파일로도 가져오기(홈 화면 앱은 저장소가 따로)
@@ -15,7 +16,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v3.5';
+  var APP_VERSION = 'v3.6';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -74,7 +75,18 @@
   }
   function divOf(id) { for (var i = 0; i < DIVISIONS.length; i++) if (DIVISIONS[i].id === id) return DIVISIONS[i]; return null; }
   function typeOf(divId, typeId) { var d = divOf(divId); if (!d) return null; for (var i = 0; i < d.types.length; i++) if (d.types[i].id === typeId) return d.types[i]; return null; }
-  function siteColor(s) { return pinStyleOf(s.division, s.type).color; }
+  /* 작물재배(농어업과 재배면적)는 읍면동별 색 — 텐아르 eupColor 와 같은 색표·계산이라 두 앱에서 같은 색 */
+  var EUP_COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#84cc16', '#06b6d4', '#d946ef', '#eab308', '#22c55e'];
+  function eupColor(name) { name = String(name || ''); var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0; return EUP_COLORS[h % EUP_COLORS.length]; }
+  function emdKey(s) { var r = s.region || {}; return [r.sido || '', r.sigungu || '', r.emd || ''].join('|'); }
+  function areaByEmd() { return !(db.profile && db.profile.areaByEmd === false); }
+  function siteColor(s) {
+    if (s.division === 'agri' && s.type === 'area' && areaByEmd() && s.region && s.region.emd) {
+      var ec = db.profile && db.profile.emdColors && db.profile.emdColors[emdKey(s)];
+      return ec || eupColor(s.region.emd);
+    }
+    return pinStyleOf(s.division, s.type).color;
+  }
   function siteLabel(s) {
     var d = divOf(s.division); if (!d) return '미분류';
     var t = typeOf(s.division, s.type);
@@ -189,7 +201,15 @@
     maxZoom: 19,
     attributionControl: { compact: true }
   });
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-left');
+  /* v3.6: 확대·축소 버튼은 왼쪽 아래, 그 위에 축척 막대와 확대 단계(레벨) */
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+  map.addControl(new maplibregl.ScaleControl({ maxWidth: 90, unit: 'metric' }), 'bottom-left');
+  (function () {
+    function Lv() {}
+    Lv.prototype.onAdd = function (m) { this._el = document.createElement('div'); this._el.className = 'maplibregl-ctrl zoom-level'; var el = this._el; function up() { el.textContent = '레벨 ' + m.getZoom().toFixed(1); } m.on('zoom', up); up(); return el; };
+    Lv.prototype.onRemove = function () { this._el.remove(); };
+    map.addControl(new Lv(), 'bottom-left');
+  })();
   map.on('moveend', function () { var c = map.getCenter(); saveJSON(VIEW_KEY, { lng: +c.lng.toFixed(6), lat: +c.lat.toFixed(6), z: +map.getZoom().toFixed(2) }); });
   var tileErrShown = false;
   map.on('error', function (e) { if (!tileErrShown && e && e.sourceId) { tileErrShown = true; toast('배경지도 일부를 불러오지 못했습니다'); } });
@@ -224,7 +244,7 @@
       if (!isFinite(s.lat) || !isFinite(s.lng)) return;
       var ord = todayOrderOf(s.id), el = document.createElement('div'), ps = pinStyleOf(s.division, s.type), lb = labelText(s);
       el.className = 'pin-wrap w-' + ps.shape;
-      el.innerHTML = '<div class="pin s-' + ps.shape + (ord ? ' today' : '') + (ord && visitedToday(s.id) ? ' visited' : '') + '" style="--pc:' + ps.color + '"><i>' + (seqCache[s.id] || '') + '</i></div>' +
+      el.innerHTML = '<div class="pin s-' + ps.shape + (ord ? ' today' : '') + (ord && visitedToday(s.id) ? ' visited' : '') + '" style="--pc:' + siteColor(s) + '"><i>' + (seqCache[s.id] || '') + '</i></div>' +
         (ord ? '<span class="pin-today">' + ord + '</span>' : '') +
         (lb ? '<span class="pin-label">' + esc(lb) + '</span>' : '');
       el.title = s.name + ' · ' + siteLabel(s);
@@ -295,6 +315,18 @@
   }
 
   /* ───────── 업무별 핀 모양·색·이름표 ───────── */
+  /* 작물재배 읍면동별 색 목록 (지금 저장된 재배면적 조사구의 읍면동만) */
+  function emdColorHtml() {
+    var seen = {}, keys = [];
+    db.sites.forEach(function (s) { if (s.division === 'agri' && s.type === 'area' && s.region && s.region.emd) { var k = emdKey(s); if (!seen[k]) { seen[k] = 0; keys.push(k); } seen[k]++; } });
+    keys.sort();
+    var ec = (db.profile && db.profile.emdColors) || {};
+    return '<div class="ps-emd"><label class="chk-all"><input type="checkbox" id="psAreaEmd"' + (areaByEmd() ? ' checked' : '') + '> <b>작물재배(재배면적)는 읍면동별 색</b> <small class="muted">— 텐아르와 같은 색</small></label>' +
+      '<div id="psEmdList"' + (areaByEmd() ? '' : ' hidden') + '>' + (keys.length ? keys.map(function (k) {
+        var p = k.split('|');
+        return '<label class="ps-emd-row"><input type="color" data-emd="' + esc(k) + '" value="' + (ec[k] || eupColor(p[2])) + '"> ' + esc(p[1] + ' ' + p[2]) + ' <small class="muted">' + seen[k] + '곳</small></label>';
+      }).join('') : '<p class="muted">읍면동이 확인된 재배면적 조사구가 아직 없습니다.</p>') + '</div></div>';
+  }
   /* 업무(조사 유형)별 핀 설정 — 기본은 내 과의 업무만, 다른 과는 골라서 */
   function openPinSettings(divSel) {
     if (!db.profile) return;
@@ -310,8 +342,11 @@
           '<input type="color" data-k="color" value="' + ps.color + '"><select data-k="shape">' + SHAPES.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === ps.shape ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
           '<div class="ps-lab">이름표: ' + LABEL_FIELDS.map(function (x) { return '<label><input type="checkbox" data-l="' + x[0] + '"' + (lf.indexOf(x[0]) >= 0 ? ' checked' : '') + '> ' + x[1] + '</label>'; }).join('') + '</div></div>';
       }).join('') +
+      (dv.id === 'agri' ? emdColorHtml() : '') +
       '<div class="row"><button class="btn" id="psReset">이 과 기본값으로</button><button class="btn primary" id="psSave" style="flex:1">저장</button></div>';
     var body = openSheet('📍 업무별 핀 모양·색·이름표', html);
+    var abe = body.querySelector('#psAreaEmd');
+    if (abe) abe.addEventListener('change', function () { body.querySelector('#psEmdList').hidden = !abe.checked; });
     body.querySelector('#psDiv').addEventListener('change', function (e) { openPinSettings(e.target.value); });
     body.querySelectorAll('.ps-row').forEach(function (row) {
       function prev() { var p = row.querySelector('.ps-prev .pin'); p.className = 'pin s-' + row.querySelector('[data-k=shape]').value; p.style.setProperty('--pc', row.querySelector('[data-k=color]').value); }
@@ -332,12 +367,19 @@
         lb[k] = Array.prototype.map.call(row.querySelectorAll('[data-l]:checked'), function (c) { return c.getAttribute('data-l'); });
       });
       db.profile.pinStyle = st; db.profile.pinLabel = lb; db.profile.updatedAt = nowIso();
+      if (abe) {
+        db.profile.areaByEmd = abe.checked;
+        var ec = db.profile.emdColors || {};
+        body.querySelectorAll('[data-emd]').forEach(function (inp) { var k = inp.getAttribute('data-emd'); if (inp.value.toLowerCase() !== eupColor(k.split('|')[2]).toLowerCase()) ec[k] = inp.value; else delete ec[k]; });
+        db.profile.emdColors = ec;
+      }
       persist(); closeSheet(); toast('핀 설정을 저장했습니다');
     });
   }
   /* 지도를 확대했을 때만 핀 이름표 표시 */
-  function labelZoom() { document.body.classList.toggle('pin-labels', map.getZoom() >= 15); }
-  map.on('zoomend', labelZoom); labelZoom();
+  /* v3.6: 핀 제목은 모든 확대 단계에서 보임 · 레이어 패널 「핀 제목」으로 켜고 끔 (odigo_layers_v2.pinTitles, 기본 켬) */
+  function setPinLabels(on) { document.body.classList.toggle('pin-labels', !!on); }
+  setPinLabels(!(lyrSet && lyrSet.pinTitles === false));
 
   /* ───────── 업무 시작 화면 (나의 조사구 현황) ───────── */
   function countBy(divId, typeId, crop) {
@@ -1303,6 +1345,7 @@
   /* 주변정보·레이어·안전 연락 모듈이 쓰는 공용 기능 */
   window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
     ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
+    setPinLabels: setPinLabels, openPinSettings: function () { if (db.profile) openPinSettings(); else openProfile(true); },
     getProfile: function () { return db.profile; },
     fitSites: fitSites, previewMerge: previewMerge, exportBackup: function () { exportBackup(); },
     /* files.js(공유·엑셀)용 자료 창구 */

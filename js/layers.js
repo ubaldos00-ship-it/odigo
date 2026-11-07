@@ -1,4 +1,4 @@
-/* 어디고 v2.4 — 「레이어」 패널 (v2.5: 네이버 지도 키 교체 · v2.6: 기본값 항공영상+하이브리드, 교통상황(ITS) 버튼) (설계: 설계/v2.4/어디고맵_통합시나리오_설계_v2.4.md 6장)
+/* 어디고 v2.4 — 「레이어」 패널 (v2.5: 네이버 지도 키 교체 · v2.6: 기본값 항공영상+하이브리드, 교통상황(ITS) 버튼 · v3.6: 내 조사구 핀(제목 켜고 끄기·핀 모양 설정), 빠른 KAKAO·NAVER(교통정보 켜서 열기)) (설계: 설계/v2.4/어디고맵_통합시나리오_설계_v2.4.md 6장)
    · 지도 종류: 일반지도·항공영상(MapLibre 배경 전환) + 카카오·네이버(공식 SDK 대체 화면)
    · 중첩: 브이월드 데이터 API(JSONP → GeoJSON 벡터) — 텐아르 map_libre.html v195 OVERLAY_DEFS와 같은 자료·확대 기준
      (브이월드 WMS는 CORS 헤더가 없어 MapLibre 타일로 못 받음 → 텐아르와 같이 데이터 API 사용)
@@ -435,6 +435,10 @@
       '<div class="ly-base"><button data-base="Base" class="' + (st.base === 'Base' ? 'on' : '') + '">일반지도</button><button data-base="Sat" class="' + (st.base === 'Sat' ? 'on' : '') + '">항공영상</button></div>' +
       '<div class="ly-base alt"><button data-alt="kakao" class="kakao">카카오 지도</button><button data-alt="naver" class="naver">네이버 지도</button></div>' +
       '<p class="ly-note">카카오·네이버 지도에서는 내 조사 장소·오늘 방문 번호·내 위치만 보입니다. 아래 브이월드 레이어와 주변정보는 보이지 않습니다.</p>' +
+      '<div class="ly-sec">내 조사구 핀</div>' +
+      '<div class="ly-item"><label class="ly-row"><span class="ly-sw" style="background:#13307a"></span><span class="ly-txt"><b>핀 제목</b><small>모든 확대 단계에서 핀 아래에 이름표 표시 (보일 항목은 업무별 핀 설정에서)</small></span>' +
+      '<span class="switch"><input type="checkbox" id="lyPinTitle"' + (st.pinTitles !== false ? ' checked' : '') + '><span></span></label></div>' +
+      '<div class="row" style="margin:6px 0 2px"><button class="btn full" id="lyPinSet" type="button">📍 업무별 핀 모양·색·이름표 · 작물재배 읍면동 색</button></div>' +
       '<div class="ly-sec">중첩 · 조회</div>' + items +
       '<p class="ly-note">자료: 브이월드(국토교통부) 데이터 API · 화면에 보이는 범위만 불러옵니다. 레이어를 여러 개 켜도 내 조사 장소 핀은 항상 맨 위에 보입니다.</p>';
     p.querySelectorAll('[data-base]').forEach(function (b) {
@@ -452,6 +456,8 @@
       });
     });
     bindSlider('cadT', setCadT); bindSlider('luT', setLuT);
+    p.querySelector('#lyPinTitle').addEventListener('change', function (e) { st.pinTitles = e.target.checked; persist(); if (A().setPinLabels) A().setPinLabels(st.pinTitles); });
+    p.querySelector('#lyPinSet').addEventListener('click', function () { closePanel(); if (A().openPinSettings) A().openPinSettings(); });
   }
   function slider(id, label, min, max, v) {
     return '<label class="ly-op">' + label + ' <input type="range" id="' + id + '" min="' + min + '" max="' + max + '" step="5" value="' + v + '"> <span id="' + id + 'V">' + v + '%</span></label>';
@@ -500,6 +506,7 @@
 
   /* ───────── 카카오·네이버 대체 화면 ───────── */
   var alt = { kind: null, map: null, objs: [], me: null, acc: null, watch: null, kmap: null, nmap: null, kOv: {}, nOv: {} };
+  var altOpt = {};
   var naverP = null, naverAuthFailed = false;
   function ensureNaver() {
     if (naverAuthFailed) return Promise.resolve(false);
@@ -526,7 +533,8 @@
     return '<div class="alt-pin' + (p.order ? ' today' : '') + (p.sel ? ' sel' : '') + '" title="' + esc(p.name) + '">' +
       '<b>' + (p.order || '') + '</b><span>' + esc(p.name) + '</span></div>';
   }
-  function openAlt(kind) {
+  function openAlt(kind, opt) {
+    altOpt = opt || {};
     var m = map(), c = m.getCenter(), z = m.getZoom();
     alt.kind = kind;
     $('altView').hidden = false;
@@ -543,6 +551,8 @@
       clearTimeout(guard);
       if (kind === 'kakao') initKakao(c, z); else initNaver(c, z);
       buildAltBar(kind);
+      /* 빠른 버튼으로 열면 교통정보를 바로 켬 */
+      if (altOpt.traffic) { var tb = $('altBar').querySelector('[data-ao="' + (kind === 'kakao' ? 'TRAFFIC' : 'traffic') + '"]'); if (tb && !tb.classList.contains('on')) tb.click(); }
       drawAlt();
       startWatch();
       $('altInfo').textContent = '조사 장소 ' + altPins().length + '곳 · 내 위치 확인 중…';
@@ -570,6 +580,11 @@
   /* 지도별로 쓸 수 있는 겹침 — SDK가 직접 제공하는 것만 */
   function buildAltBar(kind) {
     var sat = st.base === 'Sat';
+    /* 다시 열 때 버튼(꺼짐)과 지도 겹침 상태를 맞춤 */
+    try {
+      if (kind === 'kakao' && alt.kmap) ['USE_DISTRICT', 'TRAFFIC'].forEach(function (k) { alt.kmap.removeOverlayMapTypeId(kakao.maps.MapTypeId[k]); });
+      if (kind === 'naver') Object.keys(alt.nOv).forEach(function (k) { alt.nOv[k].setMap(null); });
+    } catch (e) {}
     var opts = kind === 'kakao'
       ? [['type', sat ? '일반' : '스카이뷰'], ['USE_DISTRICT', '지적편집도'], ['TRAFFIC', '교통정보']]
       : [['type', sat ? '일반' : '위성'], ['cadastral', '지적편집도'], ['traffic', '교통정보']];
@@ -670,6 +685,9 @@
     function go() { addLayers(); }
     if (m.isStyleLoaded()) go(); else m.once('load', go);
   }
-  window.OdigoLayers = { isLandInfo: function () { return on('landinfo'); }, closePanel: closePanel, base: function () { return st.base; } };
+  window.OdigoLayers = { isLandInfo: function () { return on('landinfo'); }, closePanel: closePanel, base: function () { return st.base; },
+    openAlt: function (kind, opt) { if (panelOpen) closePanel(); openAlt(kind, opt); } };
+  /* 검색창 아래 빠른 버튼 */
+  document.querySelectorAll('[data-quick]').forEach(function (b) { b.addEventListener('click', function () { if (panelOpen) closePanel(); openAlt(b.getAttribute('data-quick'), { traffic: true }); }); });
   init();
 })();
