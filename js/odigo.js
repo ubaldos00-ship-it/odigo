@@ -1,4 +1,10 @@
 /* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4) · v2.8: 나 조사하러 간다(safety.js) 연결·안전 연락 설정·공유 위치 링크 열기
+   · v3.9: 시트 뒤로 가기(‹)·닫기 동그라미 버튼, 주소 복사 버튼, 핀 누르면 핀이 시트 위로·카드 닫으면 보던 업무 목록으로, 목록 행은 위치만 이동(카드 안 열림),
+           드롭다운 고르면 그 핀으로 이동·시도›시군구›읍면동 트리식, 모든 업무 ＋추가(주소로 입력·이름/주소 필수, 작물재배 층·조사구·주소 필수, 이름 없으면 「없음」),
+           전체/메모 보기·메모 표시, 연락처(이름·휴대폰·사무실·집·직급·관계), 방문 기록(메모) 날짜별 결과(조사완료·부분완료·부재중·재방문),
+           작물재배 변동 사항(합필·분필·밭으로·논으로·건물건축·편입증감·유휴지·기타, 바로 저장)·지도에서 필지 찍어 지번 표시,
+           생산량 층·조사구가 같은 작물재배 카드에 생산량 작물명, 내 설정 주요업무분야 여러 개(고른 분야만 지도에), 답례품·수첩·달력 월별 지급 기록과 월별 조회 화면,
+           업무별 핀 기본 모양·색이 모두 다르게(생산량 = 물방울)
    · v3.8: 조사구 번호(#순번, 읍면동별·바꾸면 나머지 당김), 목록(리동 주소·메모·수정·삭제·번호 순), 조사구 입력(번호·시도~읍면동·초입주소 확인·작물재배 필수칸), 지도에서 위치 수정, 시트(지도 움직임·크기 조절·접기·핀이 시트 위로), 카카오·네이버 지도 앱 버튼, 핀·글자 확대 단계별 크기(텐아르와 같은 값)
    · v3.7: 핀 글자 텐아르 방식 — 핀 위 조사명(남색), 핀 아래 조사별 정보(갈색): 작물재배=읍면동 층-조사구, 가축=축종·이름·농장·읍면동 등. 가축·축비에 축종·농장명 칸
    · v3.6: 확대·축소 버튼 왼쪽 아래 + 확대 단계 표시, 핀 제목 항상 표시(레이어에서 켜고 끄기), 작물재배는 읍면동별 색(텐아르와 같은 색), 검색창 아래 KAKAO·NAVER 빠른 버튼
@@ -18,7 +24,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v3.8';
+  var APP_VERSION = 'v3.9';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -57,22 +63,37 @@
   /* 핀 모양·색·이름표는 업무(조사 유형)별: 열쇠 = 분야id/유형id. 정하지 않으면 업무마다 다른 기본색 */
   var TYPE_PALETTE = ['#2f9e44', '#1971c2', '#e8590c', '#9c36b5', '#c2255c', '#0c8599', '#f08c00', '#5f3dc4', '#66a80f', '#d6336c', '#495057', '#1098ad'];
   function styleKey(divId, typeId) { return divId ? divId + '/' + (typeId || '_') : '_none'; }
+  /* v3.9: 모든 업무의 기본 모양·색이 서로 다르게 — 전체 업무를 한 줄로 세운 순번으로 색(12가지)·모양(10가지)을 돌려 씀
+     (같은 과 안에서는 색도 모양도 겹치지 않음). 작물재배 = 동그라미, 생산량 = 물방울은 고정 */
+  var FIXED_SHAPE = { 'agri/area': 'circle', 'agri/prod': 'drop' };
+  function globalIdx(divId, typeId) {
+    var n = 0;
+    for (var i = 0; i < DIVISIONS.length; i++) {
+      var d = DIVISIONS[i];
+      for (var k = 0; k < d.types.length; k++) {
+        var key = d.id + '/' + d.types[k].id;
+        if (FIXED_SHAPE[key]) { if (d.id === divId && d.types[k].id === typeId) return -1; continue; }
+        if (d.id === divId && d.types[k].id === typeId) return n;
+        n++;
+      }
+    }
+    return -2;
+  }
   function defaultColor(divId, typeId) {
     var d = divOf(divId); if (!d) return UNASSIGNED_COLOR;
-    var i = -1; d.types.forEach(function (t, k) { if (t.id === typeId) i = k; });
-    return i < 0 ? d.color : TYPE_PALETTE[i % TYPE_PALETTE.length];
+    if (divId === 'agri' && typeId === 'prod') return '#0ca678';
+    var i = globalIdx(divId, typeId);
+    if (i === -2) return d.color;
+    if (i === -1) return '#2f9e44';
+    return TYPE_PALETTE[i % TYPE_PALETTE.length];
   }
   /* v3.8: 기본 모양은 업무마다 다르게(업무 이름으로 정해져 늘 같음). 작물재배는 텐아르처럼 동그라미 */
   function defaultShape(divId, typeId) {
     if (!divId) return 'circle';
-    if (divId === 'agri' && typeId === 'area') return 'circle';
-    /* 같은 과 안에서는 업무마다 서로 다른 모양 (동그라미는 작물재배용으로 남김), 과마다 시작 모양을 달리함 */
-    var d = divOf(divId); if (!d) return 'circle';
-    var rest = SHAPES.map(function (x) { return x[0]; }).filter(function (x) { return x !== 'circle'; });
-    var types = d.types.filter(function (t) { return !(divId === 'agri' && t.id === 'area'); });
-    var i = -1; types.forEach(function (t, k) { if (t.id === typeId) i = k; });
-    var off = DIVISIONS.indexOf(d) * 3;
-    return i < 0 ? 'circle' : rest[(i + off) % rest.length];
+    var fx = FIXED_SHAPE[divId + '/' + typeId]; if (fx) return fx;
+    var rest = SHAPES.map(function (x) { return x[0]; }).filter(function (x) { return x !== 'circle' && x !== 'drop'; });
+    var i = globalIdx(divId, typeId);
+    return i < 0 ? 'circle' : rest[i % rest.length];
   }
   function pinStyleOf(divId, typeId) {
     var P = (db.profile && db.profile.pinStyle) || {};
@@ -104,7 +125,7 @@
     return TOP_ALIAS[s.division + '/' + s.type] || (t ? t.name : '');
   }
   function bottomText(s) {
-    var e = emdOf(s), nm = s.name || '';
+    var e = emdOf(s), nm = nameOf(s);
     var key = s.division + '/' + s.type;
     if (key === 'agri/area') {
       var fc = [s.floor ? pad0(s.floor, 2) : '', s.josaguNo ? pad0(s.josaguNo, 4) : ''].filter(Boolean).join('-');
@@ -115,6 +136,8 @@
     if (key === 'agri/farmcost') return [s.kind, nm, e].filter(Boolean).join(' ');
     return [nm, e].filter(Boolean).join(' ');   /* 축비·쌀값(정미소)·농가경제·양곡·농림어업 등 / 다른 과도 우선 이름 + 읍면동 */
   }
+  /* v3.9: 이름이 없으면 「없음」 */
+  function nameOf(s) { var n = String(s.name || '').trim(); return !n || n === '이름 없는 조사구' ? '없음' : n; }
   function divOf(id) { for (var i = 0; i < DIVISIONS.length; i++) if (DIVISIONS[i].id === id) return DIVISIONS[i]; return null; }
   function typeOf(divId, typeId) { var d = divOf(divId); if (!d) return null; for (var i = 0; i < d.types.length; i++) if (d.types[i].id === typeId) return d.types[i]; return null; }
   /* 작물재배(농어업과 재배면적)는 읍면동별 색 — 텐아르 eupColor 와 같은 색표·계산이라 두 앱에서 같은 색 */
@@ -180,8 +203,9 @@
   function visitedToday(siteId) { var v = todayVisit(siteId); return !!(v && v.events && v.events.length); }
 
   function addSite(o) {
-    var s = { id: uid(), name: o.name || '이름 없는 조사구', addr: o.addr || '', lat: +o.lat, lng: +o.lng, memo: o.memo || '',
+    var s = { id: uid(), name: o.name || '', addr: o.addr || '', lat: +o.lat, lng: +o.lng, memo: o.memo || '',
       josaguNo: o.josaguNo || '', floor: o.floor || '', card: o.card || '', kind: o.kind || '', species: o.species || '', farmName: o.farmName || '',
+      contacts: o.contacts || [], changes: o.changes || [], jibuns: o.jibuns || [], gifts: o.gifts || {},
       division: o.division || null, type: o.type || null, crop: o.crop || null, region: o.region || null, createdAt: nowIso(), updatedAt: nowIso() };
     db.sites.push(s); persist();
     if (!s.region || s.region.status !== 'ok' && s.region.status !== 'manual') fillRegion(s);
@@ -200,13 +224,26 @@
     }
     persist();
   }
-  function addVisitEvent(siteId, note) {
-    var v = todayVisit(siteId);
-    if (!v) { v = { id: uid(), siteId: siteId, date: todayStr(), planned: false, order: 0, status: 'done', events: [], createdAt: nowIso(), updatedAt: nowIso() }; db.visits.push(v); }
+  /* v3.9 방문 기록(메모): 날짜별 결과(조사완료·부분완료·부재중·재방문·기타) + 메모 */
+  var VISIT_RESULTS = [['done', '조사완료', '#2b8a3e'], ['partial', '부분완료', '#1971c2'], ['absent', '부재중', '#e8590c'], ['revisit', '재방문', '#9c36b5'], ['etc', '기타', '#5c5f66']];
+  function resultOf(id) { for (var i = 0; i < VISIT_RESULTS.length; i++) if (VISIT_RESULTS[i][0] === id) return VISIT_RESULTS[i]; return null; }
+  function visitOn(siteId, date) { for (var i = 0; i < db.visits.length; i++) { var v = db.visits[i]; if (v.siteId === siteId && v.date === date) return v; } return null; }
+  function addVisitEvent(siteId, note, date, result) {
+    date = date || todayStr();
+    var v = visitOn(siteId, date);
+    if (!v) { v = { id: uid(), siteId: siteId, date: date, planned: false, order: 0, status: 'done', events: [], createdAt: nowIso(), updatedAt: nowIso() }; db.visits.push(v); }
     v.events = v.events || [];
-    v.events.push({ at: nowIso(), status: 'done', note: note || '' });
+    var at = date === todayStr() ? nowIso() : new Date(date + 'T12:00:00').toISOString();
+    v.events.push({ at: at, status: result || 'done', note: note || '', noTime: date !== todayStr() || undefined });
+    if (result) v.result = result;
     v.status = 'done'; v.updatedAt = nowIso();
     persist();
+  }
+  /* 가장 최근 방문 결과 (목록 표시용) */
+  function lastResult(siteId) {
+    var best = null;
+    db.visits.forEach(function (v) { if (v.siteId === siteId && v.result && (!best || v.date > best.date)) best = v; });
+    return best;
   }
   function deleteSite(siteId) {
     db.sites = db.sites.filter(function (s) { return s.id !== siteId; });
@@ -264,9 +301,20 @@
   /* ───────── 조사구 핀 (HTML 마커 = 레이어보다 항상 위) ───────── */
   var markers = {};
   var mapFilter = null;   /* 목록에서 「지도에서 보기」로 고른 조건 (분야·유형·작물·드롭다운) */
+  /* v3.9: 내 설정에서 고른 주요업무분야(여러 개)만 지도에 (미분류는 늘 표시) */
+  function myDivs() {
+    var p = db.profile || {};
+    var a = Array.isArray(p.divisions) && p.divisions.length ? p.divisions : (p.division ? [p.division] : []);
+    return a.filter(function (x) { return divOf(x); });
+  }
   function visibleSites() {
     if (mapFilter) return filterSites(mapFilter);
-    return db.sites.filter(function (s) { return !activeDiv || (activeDiv === '_none' ? !s.division : s.division === activeDiv); });
+    /* 내 설정에서 분야를 직접 고른 뒤부터 적용 (예전 설정은 모두 표시) */
+    var md = db.profile && Array.isArray(db.profile.divisions) ? myDivs() : [];
+    return db.sites.filter(function (s) {
+      if (activeDiv) return activeDiv === '_none' ? !s.division : s.division === activeDiv;
+      return !s.division || !md.length || md.indexOf(s.division) >= 0;
+    });
   }
   /* v3.8 조사구 번호(#): 텐아르처럼 같은 업무·작물·읍면동 안의 순번 = 가는 순서. 저장값(no) → 이름의 #숫자 → 조사구번호 순 */
   function groupKey(s) { var r = s.region || {}; return [s.division || '_', s.type || '_', s.crop || '_', r.status === 'ok' ? (r.sido + r.sigungu + r.emd) : '?'].join('|'); }
@@ -291,7 +339,7 @@
     if (s.division === 'agri' && s.type === 'area') {
       return ['작물재배', s.floor ? p2(s.floor) + '층' : '', s.josaguNo ? p4(s.josaguNo) + '조사구' : '', noOf(s) ? '#' + noOf(s) : ''].filter(Boolean).join(' ');
     }
-    return s.name || '이름 없는 조사구';
+    return nameOf(s);
   }
   function floorJosagu(s) { return [s.floor ? p2(s.floor) + '층' : '', s.josaguNo ? p4(s.josaguNo) + '조사구' : ''].filter(Boolean).join(' '); }
   /* 카카오맵·네이버지도 앱 바로가기 (모든 팝업 공용) */
@@ -334,11 +382,19 @@
         (tp ? '<span class="pin-top">' + esc(tp) + '</span>' : '') +
         (lb ? '<span class="pin-label">' + esc(lb) + '</span>' : '');
       el.title = dispName(s) + ' · ' + siteLabel(s);
-      el.addEventListener('click', function (ev) { ev.stopPropagation(); openSite(s.id); });
+      el.addEventListener('click', function (ev) { ev.stopPropagation(); openSite(s.id, { fromPin: true }); flyToVisible(s, map.getZoom()); });
       /* 물방울은 끝이 좌표, 나머지 모양은 가운데가 좌표 (텐아르 동그라미 핀과 같이 겹쳐 보임) */
       var m = new maplibregl.Marker({ element: el, anchor: ps.shape === 'drop' ? 'bottom' : 'center' }).setLngLat([s.lng, s.lat]).addTo(map);
       m.getElement().style.zIndex = ord ? 3 : 2;
       markers[s.id] = m;
+      /* v3.9 작물재배: 지도에서 찍은 필지(지번) 표시 */
+      (s.jibuns || []).forEach(function (j, k) {
+        if (!isFinite(j.lat)) return;
+        var je = document.createElement('div'); je.className = 'jb-mark' + (j.changes && j.changes.length ? ' chg' : '');
+        je.textContent = j.jibun + (j.changes && j.changes.length ? ' · ' + j.changes.join(',') : '');
+        je.addEventListener('click', function (ev) { ev.stopPropagation(); openSite(s.id, { fromPin: true }); });
+        markers[s.id + '#j' + k] = new maplibregl.Marker({ element: je, anchor: 'center' }).setLngLat([j.lng, j.lat]).addTo(map);
+      });
     });
   }
   /* v3.8 확대 단계별 핀·글자 크기 — 텐아르 area-plots 와 같은 값 (축소하면 작게, 확대하면 크게) */
@@ -360,19 +416,43 @@
 
   /* ───────── 시트 ───────── */
   var sheetLocked = false, curView = null;   /* curView = 지금 열린 조사구 카드 id (지역 확인 후 새로 그리기용) */
+  /* v3.9 뒤로 가기: 시트 내용은 화면마다 따로 담는 칸(pane)에 그리고, 새 화면을 열면 이전 칸을 통째로(버튼 동작 포함) 보관했다가 ‹ 로 되살림.
+     이미 보관한 화면과 같은 제목을 다시 열면 그 화면으로 「돌아간」 것으로 보고 그 뒤 기록은 정리 */
+  var navStack = [], curTitle = '';
+  function curPane() { return $('sheetBody').firstElementChild; }
+  function updBack() { $('sheetBack').hidden = sheetLocked || !navStack.length; }
   function openSheet(title, html, opt) {
+    var b = $('sheetBody'), open = !$('sheet').hidden;
+    if (!open || sheetLocked || (opt && opt.lock) || (opt && opt.fresh)) navStack = [];
+    else {
+      var idx = -1; navStack.forEach(function (e, i) { if (idx < 0 && (e.title === title || (opt && opt.view && e.view === opt.view))) idx = i; });
+      if (idx >= 0) navStack.length = idx;
+      else if (curPane() && curTitle !== title) { navStack.push({ title: curTitle, pane: curPane(), view: curView, top: b.scrollTop }); if (navStack.length > 12) navStack.shift(); }
+    }
     curView = null;
     sheetLocked = !!(opt && opt.lock);
     $('sheetClose').hidden = sheetLocked;
-    $('sheetTitle').textContent = title;
-    $('sheetBody').innerHTML = html || '';
+    $('sheetTitle').textContent = title; curTitle = title;
+    var pane = document.createElement('div'); pane.className = 'pane'; pane.innerHTML = html || '';
+    while (b.firstChild) b.removeChild(b.firstChild);
+    b.appendChild(pane);
     $('sheet').hidden = false;
     $('sheetBackdrop').hidden = !sheetLocked;   /* v3.8: 처음 설정 창만 지도를 막고, 나머지는 시트가 열려 있어도 지도를 움직일 수 있음 */
     setSheetMin(false);
-    $('sheetBody').scrollTop = 0;
-    return $('sheetBody');
+    b.scrollTop = 0;
+    updBack();
+    return pane;
   }
-  function closeSheet(force) { if (sheetLocked && force !== true) return; sheetLocked = false; $('sheetClose').hidden = false; $('sheet').hidden = true; $('sheetBackdrop').hidden = true; }
+  function sheetBack() {
+    var e = navStack.pop(); if (!e) { closeSheet(); return; }
+    var b = $('sheetBody');
+    while (b.firstChild) b.removeChild(b.firstChild);
+    b.appendChild(e.pane);
+    $('sheetTitle').textContent = e.title; curTitle = e.title; curView = e.view;
+    setSheetMin(false); b.scrollTop = e.top || 0; updBack();
+    if (e.view && findSite(e.view)) openSite(e.view, { refresh: true });   /* 조사구 카드는 최신 내용으로 다시 그림 */
+  }
+  function closeSheet(force) { if (sheetLocked && force !== true) return; sheetLocked = false; navStack = []; $('sheetClose').hidden = false; $('sheet').hidden = true; $('sheetBackdrop').hidden = true; updBack(); }
   /* 접기(머리만 남김) · 위 막대를 끌어 높이 조절 (텐아르 시트처럼) */
   var sheetH = null;
   function setSheetMin(m) { $('sheet').classList.toggle('min', !!m); $('sheetMin').textContent = m ? '▴' : '▾'; $('sheetMin').title = m ? '펼치기' : '접기'; }
@@ -395,16 +475,26 @@
   /* 시트에 가리지 않게: 핀이 시트 위쪽 보이는 곳 가운데에 오도록 이동 */
   function flyToVisible(s, zoom) {
     var sh = $('sheet').hidden ? 0 : $('sheet').getBoundingClientRect().height;
-    map.flyTo({ center: [s.lng, s.lat], zoom: zoom || Math.max(map.getZoom(), 15), offset: [0, -Math.round(sh / 2)] });
+    if ($('sheet').classList.contains('min')) sh = 60;
+    map.easeTo({ center: [s.lng, s.lat], zoom: zoom || Math.max(map.getZoom(), 15), offset: [0, -Math.round(sh / 2)], duration: 600 });
   }
-  $('sheetClose').addEventListener('click', function () { closeSheet(); });
+  /* v3.9: 조사구 카드를 닫으면 보던 업무 목록이 다시 나옴 (목록에서 닫으면 그때 닫힘) */
+  var lastList = null;
+  $('sheetClose').addEventListener('click', function () {
+    var s = curView && findSite(curView);
+    if (s && lastList && lastList.div === s.division) { var o = lastList; closeSheet(); openList(o); return; }
+    closeSheet();
+  });
+  $('sheetBack').addEventListener('click', sheetBack);
   $('sheetBackdrop').addEventListener('click', function () { closeSheet(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeSheet(); hideResults(); } });
 
   /* ───────── 처음 접속 · 내 설정 ───────── */
+  /* v3.9: 주요업무분야 여러 개 체크 — 고른 분야만 지도에 표시 */
   function divRadios(sel) {
+    var on = Array.isArray(sel) ? sel : (sel ? [sel] : []);
     return '<div class="div-pick">' + DIVISIONS.map(function (d) {
-      return '<label class="div-opt" style="--c:' + d.color + '"><input type="radio" name="pdiv" value="' + d.id + '"' + (sel === d.id ? ' checked' : '') + '><span>' + esc(d.name) + '</span></label>';
+      return '<label class="div-opt" style="--c:' + d.color + '"><input type="checkbox" name="pdiv" value="' + d.id + '"' + (on.indexOf(d.id) >= 0 ? ' checked' : '') + '><span>' + esc(d.name) + '</span></label>';
     }).join('') + '</div>';
   }
   function openProfile(first) {
@@ -413,27 +503,35 @@
       (first ? '<p class="muted">처음 한 번만 설정합니다. 나중에 ⓘ › 내 설정에서 바꿀 수 있습니다.</p>' : '') +
       '<label class="fld">닉네임</label><input class="inp" id="pfNick" maxlength="12" value="' + esc(p.nickname || '') + '" placeholder="예: 현장하늘" autocomplete="nickname">' +
       '<p class="muted">텐아르 게임에서 쓰는 이름을 넣어 주세요. 어디고 화면과 카톡·문자 메시지에 이 이름이 들어갑니다.</p>' +
-      '<label class="fld">주요업무분야 (하나 선택)</label>' + divRadios(p.division) +
-      (first ? '' : '<p class="muted">기본 분야를 바꾸면 시작 화면과 오른쪽 기본 버튼만 바뀝니다. 이미 저장한 조사구의 분야는 조사구 수정에서 바꿉니다.</p>' +
+      '<label class="fld">주요업무분야 (여러 개 고를 수 있음)</label>' + divRadios(p.divisions && p.divisions.length ? p.divisions : p.division) +
+      '<p class="muted">고른 분야의 조사구만 지도에 보입니다(미분류는 늘 보임). 맨 처음 고른 분야(이미 있던 기본 분야)가 시작 화면이 됩니다.</p>' +
+      (first ? '' : '<p class="muted">이미 저장한 조사구의 분야는 조사구 수정에서 바꿉니다.</p>' +
         '<label class="fld">🚨 현장 안전 연락 — 기본 문자 수신 번호</label><input class="inp" id="pfSms" inputmode="tel" maxlength="20" placeholder="예: 010-1234-5678" value="' + esc((p.safety || {}).smsTo || '') + '">' +
         '<label class="fld">카카오톡 안전 연락방 이름</label><input class="inp" id="pfRoom" maxlength="30" placeholder="예: 고령 현장 안전방" value="' + esc((p.safety || {}).kakaoRoom || '') + '">' +
         '<p class="muted">「나 조사하러 간다」에서 문자 받는 번호의 기본값과, 카톡 공유 때 고를 방 이름 안내에 씁니다. 보내기 전에 바꿀 수 있습니다.</p>' +
+        '<p class="muted">※ 카카오톡은 사생활 보호를 위해 웹·앱이 <b>정해진 단체방으로 자동 전송하는 기능을 제공하지 않습니다</b>(공식 공유는 매번 방을 직접 고름). 그래서 방 이름을 화면에 크게 보여 주고, 문구는 미리 복사해 둡니다.</p>' +
         '<div class="row"><button class="btn full" id="pfPins" type="button">📍 업무별 핀 모양·색·이름표 설정</button></div>') +
       '<div class="row"><button class="btn primary full" id="pfSave" disabled>' + (first ? '저장하고 시작' : '저장') + '</button></div>',
       { lock: !!first });
     var nick = body.querySelector('#pfNick'), btn = body.querySelector('#pfSave');
     function check() { btn.disabled = !(nick.value.trim() && body.querySelector('input[name="pdiv"]:checked')); }
+    var order = (p.divisions || []).slice();
+    body.querySelectorAll('input[name="pdiv"]').forEach(function (r) { r.addEventListener('change', function () { order = order.filter(function (x) { return x !== r.value; }); if (r.checked) order.push(r.value); }); });
     nick.addEventListener('input', check);
     var pinsBtn = body.querySelector('#pfPins'); if (pinsBtn) pinsBtn.addEventListener('click', function () { openPinSettings(); });
     body.querySelectorAll('input[name="pdiv"]').forEach(function (r) { r.addEventListener('change', check); });
     check();
     btn.addEventListener('click', function () {
-      var d = body.querySelector('input[name="pdiv"]:checked').value;
+      var checked = Array.prototype.map.call(body.querySelectorAll('input[name="pdiv"]:checked'), function (x) { return x.value; });
+      var ds = order.filter(function (x) { return checked.indexOf(x) >= 0; }).concat(checked.filter(function (x) { return order.indexOf(x) < 0; }));
+      var d = p.division && ds.indexOf(p.division) >= 0 ? p.division : ds[0];
+      ds = [d].concat(ds.filter(function (x) { return x !== d; }));
       var sf = (db.profile && db.profile.safety) || {};
       var smsEl = body.querySelector('#pfSms'), roomEl = body.querySelector('#pfRoom');
       if (smsEl) sf = { smsTo: smsEl.value.replace(/[^\d+\-\s]/g, '').trim(), kakaoRoom: roomEl.value.trim() };
-      db.profile = { v: 1, nickname: nick.value.trim().slice(0, 12), division: d, safety: sf,
-        createdAt: (db.profile && db.profile.createdAt) || nowIso(), updatedAt: nowIso() };
+      db.profile = Object.assign({}, db.profile || {}, { v: 1, nickname: nick.value.trim().slice(0, 12), division: d, divisions: ds, safety: sf,
+        createdAt: (db.profile && db.profile.createdAt) || nowIso(), updatedAt: nowIso() });
+      activeDiv = null; mapFilter = null;
       persist();
       closeSheet(true);
       toast('저장했습니다');
@@ -462,6 +560,7 @@
     if (!divSel || divSel === db.profile.division) rows.push([null, null, '미분류']);
     var html = '<p class="muted">업무마다 핀의 모양·색을 고릅니다. 핀 위·아래 글자는 조사별로 정해져 있습니다(예: 작물재배 → 위 「작물재배」, 아래 「논공읍 06-0022」). 레이어 › 「핀 제목」으로 켜고 끕니다.</p>' +
       '<label class="fld">과</label><select class="inp" id="psDiv">' + DIVISIONS.map(function (d) { return '<option value="' + d.id + '"' + (d.id === dv.id ? ' selected' : '') + '>' + esc(d.name) + (d.id === db.profile.division ? ' (내 과)' : '') + '</option>'; }).join('') + '</select>' +
+      '<div class="row ps-top"><button class="btn" id="psReset">↺ 이 과 기본값으로</button><button class="btn primary" id="psSave" style="flex:1">저장</button></div>' +
       rows.map(function (r) {
         var ps = pinStyleOf(r[0], r[1]), lf = labelFieldsOf(r[0], r[1]), n = r[0] ? countBy(r[0], r[1]) : unassigned().length;
         return '<div class="ps-row" data-key="' + styleKey(r[0], r[1]) + '">' +
@@ -469,8 +568,7 @@
           '<input type="color" data-k="color" value="' + ps.color + '"><select data-k="shape">' + SHAPES.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === ps.shape ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
           '</div>';
       }).join('') +
-      (dv.id === 'agri' ? emdColorHtml() : '') +
-      '<div class="row"><button class="btn" id="psReset">이 과 기본값으로</button><button class="btn primary" id="psSave" style="flex:1">저장</button></div>';
+      (dv.id === 'agri' ? emdColorHtml() : '');
     var body = openSheet('📍 업무별 핀 모양·색·이름표', html);
     var abe = body.querySelector('#psAreaEmd');
     if (abe) abe.addEventListener('change', function () { body.querySelector('#psEmdList').hidden = !abe.checked; });
@@ -489,8 +587,11 @@
       var st = db.profile.pinStyle || {}, lb = db.profile.pinLabel || {};
       DIVISIONS.forEach(function (d) { delete st[d.id]; delete lb[d.id]; });   /* v2.9의 과 단위 설정은 정리 */
       body.querySelectorAll('.ps-row').forEach(function (row) {
-        var k = row.getAttribute('data-key');
-        st[k] = { color: row.querySelector('[data-k=color]').value, shape: row.querySelector('[data-k=shape]').value };
+        var k = row.getAttribute('data-key'), pr = k === '_none' ? [null, null] : k.split('/');
+        var c = row.querySelector('[data-k=color]').value, sh = row.querySelector('[data-k=shape]').value;
+        /* v3.9: 기본값과 같으면 저장하지 않음 → 나중에 기본값이 바뀌어도 따라감 */
+        if (c.toLowerCase() === defaultColor(pr[0], pr[1]).toLowerCase() && sh === defaultShape(pr[0], pr[1])) delete st[k];
+        else st[k] = { color: c, shape: sh };
         delete lb[k];
       });
       db.profile.pinStyle = st; db.profile.pinLabel = lb; db.profile.updatedAt = nowIso();
@@ -527,7 +628,7 @@
       }).join('') + '</div>';
     var un = unassigned().length;
     if (un) html += '<button class="home-un" data-un="1"><span>미분류 (v2.3에서 옮겨 온 장소 등)</span><b>' + un + '건 ›</b></button>';
-    html += '<div class="row"><button class="btn" id="hmMap" style="flex:1">지도에서 보기</button><button class="btn" id="hmSet">⚙ 내 설정</button></div>' +
+    html += '<div class="row"><button class="btn" id="hmMap" style="flex:1">지도에서 보기</button><button class="btn" id="hmGift">🎁 답례품</button><button class="btn" id="hmSet">⚙ 내 설정</button></div>' +
       '<div class="row home-divs">' + DIVISIONS.filter(function (x) { return x.id !== d.id; }).map(function (x) {
         return '<button class="btn sm" data-div="' + x.id + '">' + esc(x.name) + ' ' + countBy(x.id) + '</button>';
       }).join('') + '</div>';
@@ -538,14 +639,18 @@
     var ub = body.querySelector('[data-un]'); if (ub) ub.addEventListener('click', function () { openUnassigned(); });
     body.querySelector('#hmMap').addEventListener('click', function () { setActiveDiv(d.id); closeSheet(); fitSites(visibleSites()); });
     body.querySelector('#hmSet').addEventListener('click', function () { openProfile(false); });
+    body.querySelector('#hmGift').addEventListener('click', function () { openGifts({ div: d.id }); });
     body.querySelectorAll('[data-div]').forEach(function (b) { b.addEventListener('click', function () { openHome(b.getAttribute('data-div')); }); });
   }
   function fitSites(list) {
     var pts = list.filter(function (s) { return isFinite(s.lat); });
     if (!pts.length) return;
-    if (pts.length === 1) { map.flyTo({ center: [pts[0].lng, pts[0].lat], zoom: Math.max(map.getZoom(), 15) }); return; }
+    /* v3.9: 시트가 열려 있으면 시트 위 보이는 곳에 맞춤 */
+    var sh = $('sheet').hidden ? 0 : ($('sheet').classList.contains('min') ? 60 : $('sheet').getBoundingClientRect().height);
+    if (pts.length === 1) { flyToVisible(pts[0], Math.max(map.getZoom(), 15)); return; }
     var b = new maplibregl.LngLatBounds(); pts.forEach(function (s) { b.extend([s.lng, s.lat]); });
-    map.fitBounds(b, { padding: 70, maxZoom: 16 });
+    var maxB = Math.max(70, window.innerHeight - 200);
+    map.fitBounds(b, { padding: { top: 90, left: 50, right: 70, bottom: Math.min(maxB, sh + 40) }, maxZoom: 16, duration: 600 });
   }
 
   /* ───────── 오른쪽 분야 버튼 ───────── */
@@ -556,12 +661,12 @@
     if (!db.profile) { box.hidden = true; return; }
     box.hidden = false;
     var mine = db.profile.division;
-    var order = [mine].concat(MAIN_DIVS.filter(function (x) { return x !== mine; }));
+    /* v3.9: 내 설정에서 고른 주요업무분야만 버튼으로, 나머지는 ⋯ 안 */
+    var order = Array.isArray(db.profile.divisions) && myDivs().length ? myDivs() : [mine].concat(MAIN_DIVS.filter(function (x) { return x !== mine; }));
     var rest = DIVISIONS.map(function (d) { return d.id; }).filter(function (x) { return order.indexOf(x) < 0; });
-    /* 넓은 화면: 기본 분야 + 농어업·경제·사회·대행, 나머지(지역·지원)는 ⋯ 안 / 좁은 화면(높이 700 미만): 기본 분야만, 나머지는 모두 ⋯ 안 */
-    var compact = window.innerHeight < 700;
-    var shown = compact ? [mine] : order;
-    var hiddenIds = compact ? order.slice(1).concat(rest) : rest;
+    var compact = window.innerHeight < 700 && order.length > 3 || window.innerHeight < 600 && order.length > 1;
+    var shown = compact ? order.slice(0, 3) : order;
+    var hiddenIds = compact ? order.slice(3).concat(rest) : rest;
     var html = shown.map(btn).join('');
     if (hiddenIds.length) html += '<button class="div-btn more" data-more="1">' + (divMoreOpen ? '접기' : '⋯ 분야') + '</button>';
     if (divMoreOpen) html += hiddenIds.map(btn).join('');
@@ -575,7 +680,7 @@
     box.querySelectorAll('[data-d]').forEach(function (b) {
       b.addEventListener('click', function () {
         var id = b.getAttribute('data-d');
-        if (activeDiv === id) { setActiveDiv(null); toast('모든 분야의 조사구를 표시합니다'); return; }
+        if (activeDiv === id) { setActiveDiv(null); lastList = null; toast('고른 주요업무분야의 조사구를 모두 표시합니다'); return; }
         setActiveDiv(id);
         if (id === '_none') openUnassigned(); else openList({ div: id });
       });
@@ -623,9 +728,12 @@
     var ord = todayOrderOf(s.id), n = noOf(s);
     var sub = addrTail(s) || s.addr || '';
     var extra = s.division === 'agri' && s.type === 'area' ? '' : [s.species, s.farmName, s.kind].filter(Boolean).join(' ');
+    var lr = lastResult(s.id), rr = lr && resultOf(lr.result), mm = hasMemo(s);
+    var nm = isAreaSite(s) ? '' : (s.division === 'agri' && s.type === 'prod' ? [s.crop, nameOf(s)].filter(Boolean).join(' ') : '');
     return '<div class="plist-item" data-id="' + s.id + '"><span class="num" style="background:' + siteColor(s) + '">' + (n || '·') + '</span>' +
-      '<span class="t"><b>' + esc(dispName(s)) + (ord ? ' <span class="chip today">오늘 ' + ord + '</span>' : '') + (visitedToday(s.id) ? ' <span class="chip done">방문</span>' : '') + '</b>' +
-      '<span>' + esc(sub) + (extra ? ' · ' + esc(extra) : '') + '</span>' +
+      '<span class="t"><b>' + esc(nm || dispName(s)) + (mm ? ' <span class="chip memo" title="메모 있음">📝</span>' : '') + (ord ? ' <span class="chip today">오늘 ' + ord + '</span>' : '') + (visitedToday(s.id) ? ' <span class="chip done">방문</span>' : '') +
+        (rr ? ' <span class="chip vr" style="--c:' + rr[2] + '">' + rr[1] + '</span>' : '') + '</b>' +
+      '<span>' + esc(sub) + (extra ? ' · ' + esc(extra) : '') + ((s.changes || []).length ? ' · <em class="chg-t">' + esc(s.changes.join(',')) + '</em>' : '') + '</span>' +
       (s.memo ? '<span class="row-memo">📝 ' + esc(s.memo.slice(0, 60)) + '</span>' : '') + '</span>' +
       '<span class="row-acts"><button type="button" class="ra" data-edit="' + s.id + '">수정</button><button type="button" class="ra del" data-del="' + s.id + '">삭제</button></span></div>';
   }
@@ -671,44 +779,57 @@
       if (f.floor && String(s.floor || '') !== f.floor) return false;
       if (f.josaguNo && String(s.josaguNo || '') !== f.josaguNo) return false;
       if (f.kind && s.kind !== f.kind) return false;
+      if (o.memo && !hasMemo(s)) return false;
       return true;
     });
   }
   /* 드롭다운: 시도 › 시군구 › 읍면동 + 작물·층·조사구·구분 (값이 있는 것만) */
+  /* 드롭다운: 시도 › 시군구 › 읍면동 (트리식 — 위에서 고른 곳 아래만) + 작물·층·조사구·구분 (값이 있는 것만, 위 조건 안에서) */
   function filterBar(o) {
     var f = o.f || {};
-    var base = filterSites({ div: o.div, type: o.type });
-    function uniq(fn, within) { var m = {}; (within || base).forEach(function (s) { var v = fn(s); if (v) m[v] = (m[v] || 0) + 1; }); return Object.keys(m).sort(natCmp).map(function (k) { return [k, m[k]]; }); }
+    var base = filterSites({ div: o.div, type: o.type, memo: o.memo });
+    function uniq(fn, within) { var m = {}; within.forEach(function (s) { var v = fn(s); if (v) m[v] = (m[v] || 0) + 1; }); return Object.keys(m).sort(natCmp).map(function (k) { return [k, m[k]]; }); }
     function reg(s) { return s.region && s.region.status === 'ok' ? s.region : {}; }
-    var inSido = base.filter(function (s) { return !f.sido || reg(s).sido === f.sido; });
-    var inSgg = inSido.filter(function (s) { return !f.sigungu || reg(s).sigungu === f.sigungu; });
-    function sel(key, label, opts, always) {
+    var sidos = uniq(function (s) { return reg(s).sido; }, base);
+    var sido = f.sido || (sidos.length === 1 ? sidos[0][0] : '');
+    var inSido = base.filter(function (s) { return !sido || reg(s).sido === sido; });
+    var sggs = uniq(function (s) { return reg(s).sigungu; }, inSido);
+    var sgg = f.sigungu || (sido && sggs.length === 1 ? sggs[0][0] : '');
+    var inSgg = inSido.filter(function (s) { return !sgg || reg(s).sigungu === sgg; });
+    var inEmd = inSgg.filter(function (s) { return !f.emd || reg(s).emd === f.emd; });
+    var inCrop = inEmd.filter(function (s) { return !o.crop || s.crop === o.crop; });
+    function sel(key, label, opts, always, dis, cur) {
       if (!always && !opts.length) return '';
-      return '<label class="flt"><select data-f="' + key + '" aria-label="' + label + '"><option value="">' + label + ' 전체</option>' +
-        opts.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (String(f[key] || (key === 'crop' ? o.crop || '' : '')) === x[0] ? ' selected' : '') + '>' + esc(x[0]) + ' (' + x[1] + ')</option>'; }).join('') + '</select></label>';
+      cur = cur != null ? cur : String(f[key] || (key === 'crop' ? o.crop || '' : ''));
+      return '<label class="flt' + (dis ? ' dis' : '') + '"><select data-f="' + key + '" aria-label="' + label + '"' + (dis ? ' disabled' : '') + '><option value="">' + (dis ? label + ' (위에서 먼저 선택)' : label + ' 전체') + '</option>' +
+        (dis ? '' : opts.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (cur === x[0] ? ' selected' : '') + '>' + esc(x[0]) + ' (' + x[1] + ')</option>'; }).join('')) + '</select></label>';
     }
     var t = typeOf(o.div, o.type);
     return '<div class="flt-bar">' +
-      sel('sido', '시도', uniq(function (s) { return reg(s).sido; }), true) +
-      sel('sigungu', '시군구', uniq(function (s) { return reg(s).sigungu; }, inSido), true) +
-      sel('emd', '읍면동', uniq(function (s) { return reg(s).emd; }, inSgg), true) +
-      (t && t.crops ? sel('crop', '작물', uniq(function (s) { return s.crop; })) : '') +
-      sel('floor', '층', uniq(function (s) { return s.floor ? String(s.floor) : ''; })) +
-      sel('josaguNo', '조사구', uniq(function (s) { return s.josaguNo ? String(s.josaguNo) : ''; })) +
-      sel('kind', '구분', uniq(function (s) { return s.kind; })) +
+      sel('sido', '시도', sidos, true, false, sido) +
+      sel('sigungu', '시군구', sggs, true, !sido, sgg) +
+      sel('emd', '읍면동', uniq(function (s) { return reg(s).emd; }, inSgg), true, !sgg) +
+      (t && t.crops ? sel('crop', '작물', uniq(function (s) { return s.crop; }, inEmd)) : '') +
+      sel('floor', '층', uniq(function (s) { return s.floor ? String(s.floor) : ''; }, inCrop)) +
+      sel('josaguNo', '조사구', uniq(function (s) { return s.josaguNo ? String(s.josaguNo) : ''; }, inCrop.filter(function (s) { return !f.floor || String(s.floor || '') === f.floor; }))) +
+      sel('kind', '구분', uniq(function (s) { return s.kind; }, inCrop)) +
       '</div>';
   }
   function openList(o) {
     o = o || {};
     var d = divOf(o.div);
     if (!d) { openAllList(); return; }
+    lastList = { div: o.div, type: o.type || null, crop: o.crop || null, f: o.f || {}, memo: !!o.memo };
     var list = filterSites(o);
-    var html = '<div class="tabs scroll"><button class="tab' + (!o.type ? ' on' : '') + '" data-t="">전체 ' + countBy(d.id) + '</button>' +
+    var memoN = filterSites({ div: o.div, type: o.type, crop: o.crop, memo: true }).length;
+    var html = '<div class="seg"><button class="seg-b' + (!o.memo ? ' on' : '') + '" data-memo="0">전체</button><button class="seg-b' + (o.memo ? ' on' : '') + '" data-memo="1">📝 메모 ' + memoN + '</button>' +
+      '<button class="btn primary sm add-b" id="lsAdd">＋ 추가</button></div>' +
+      '<div class="tabs scroll"><button class="tab' + (!o.type ? ' on' : '') + '" data-t="">전체 ' + countBy(d.id) + '</button>' +
       d.types.map(function (t) { var n = countBy(d.id, t.id); return '<button class="tab' + (o.type === t.id ? ' on' : '') + (n ? '' : ' zero') + '" data-t="' + t.id + '">' + esc(t.name) + ' ' + n + '</button>'; }).join('') + '</div>';
     var t = typeOf(d.id, o.type);
     html += '<p class="muted tab-hint">고른 업무 탭을 한 번 더 누르면 그 업무 핀만 지도에 모아 보여 줍니다.</p>';
     html += filterBar(o);
-    html += list.length ? treeHtml(list, !!o.type) : '<p class="muted">이 조건의 조사구가 없습니다. 지도를 길게 누르거나 검색해서 조사구를 등록하세요.</p>';
+    html += list.length ? treeHtml(list, !!o.type) : '<p class="muted">' + (o.memo ? '메모가 있는 조사구가 없습니다.' : '이 조건의 조사구가 없습니다. 「＋ 추가」로 주소를 넣거나, 지도를 길게 누르거나 검색해서 등록하세요.') + '</p>';
     html += '<div class="row"><button class="btn" id="lsMap" style="flex:1">이 목록 지도에서 보기 (' + list.length + ')</button><button class="btn" id="lsHome">현황</button></div>' +
       '<div class="row"><button class="btn" id="lsShare" style="flex:1">📤 이 업무 자료 공유</button><button class="btn" id="lsXls" style="flex:1">📥 엑셀로 올리기</button></div>' +
       '<div class="row"><button class="btn danger" id="lsDel" style="flex:1">🗑 이 업무 삭제</button><button class="btn danger" id="lsDelPick" style="flex:1">🗑 골라서 삭제</button></div>';
@@ -718,7 +839,7 @@
       b.addEventListener('click', function () {
         var nt = b.getAttribute('data-t') || null;
         if (nt === (o.type || null)) { showOnMap(o); return; }   /* 이미 고른 업무를 한 번 더 누르면 지도에서 보기 */
-        openList({ div: d.id, type: nt });
+        openList({ div: d.id, type: nt, memo: o.memo });
       });
     });
     body.querySelectorAll('select[data-f]').forEach(function (sl) {
@@ -727,9 +848,16 @@
         if (k === 'crop') crop = sl.value || null; else nf[k] = sl.value || '';
         if (k === 'sido') { nf.sigungu = ''; nf.emd = ''; }
         if (k === 'sigungu') nf.emd = '';
-        openList({ div: d.id, type: o.type, crop: crop, f: nf });
+        if (k === 'floor') nf.josaguNo = '';
+        var no = { div: d.id, type: o.type, crop: crop, f: nf, memo: o.memo };
+        openList(no);
+        /* v3.9: 고른 곳의 핀으로 지도 이동 (텐아르처럼) */
+        var hit = filterSites(no).filter(function (x) { return isFinite(x.lat); });
+        if (hit.length) { if (hit.some(function (x) { return !markers[x.id]; })) { activeDiv = d.id; mapFilter = null; renderMarkers(); renderDivBtns(); } fitSites(hit); }
       });
     });
+    body.querySelectorAll('[data-memo]').forEach(function (b) { b.addEventListener('click', function () { openList({ div: d.id, type: o.type, crop: o.crop, f: o.f, memo: b.getAttribute('data-memo') === '1' }); }); });
+    body.querySelector('#lsAdd').addEventListener('click', function () { openSiteForm({ division: d.id, type: o.type, crop: o.crop, byAddr: true }, null); });
     bindRows(body);
     body.querySelector('#lsMap').addEventListener('click', function () { showOnMap(o); });
     body.querySelector('#lsHome').addEventListener('click', function () { openHome(d.id); });
@@ -752,12 +880,21 @@
     bindRows(body);
     var rr = body.querySelector('#reRegion'); if (rr) rr.addEventListener('click', function () { refillRegions(true); toast('지역을 다시 확인합니다'); });
   }
+  function blinkPin(id) {
+    var m = markers[id]; if (!m) return;
+    var el = m.getElement(); el.classList.remove('blink'); void el.offsetWidth; el.classList.add('blink');
+    el.style.zIndex = 5; setTimeout(function () { el.classList.remove('blink'); el.style.zIndex = ''; }, 2600);
+  }
   function bindRows(body) {
     body.querySelectorAll('.plist-item[data-id]').forEach(function (b) {
       b.addEventListener('click', function (e) {
         if (e.target.closest('.row-acts')) return;
         var s = findSite(b.getAttribute('data-id')); if (!s) return;
-        openSite(s.id); flyToVisible(s);
+        /* v3.9: 목록에서는 카드를 열지 않고 위치만 이동(목록 유지) · 핀을 누르면 카드 */
+        body.querySelectorAll('.plist-item.sel').forEach(function (x) { x.classList.remove('sel'); });
+        b.classList.add('sel');
+        if (!markers[s.id] && (activeDiv || mapFilter)) { activeDiv = null; mapFilter = null; renderMarkers(); renderDivBtns(); }
+        flyToVisible(s, Math.max(map.getZoom(), 16)); blinkPin(s.id);
       });
     });
     body.querySelectorAll('[data-edit]').forEach(function (b) { b.addEventListener('click', function (e) { e.stopPropagation(); var s = findSite(b.getAttribute('data-edit')); if (s) openEditChooser(s); }); });
@@ -771,7 +908,7 @@
   }
   /* 수정: 지도에서 위치 수정 / 입력창에서 수정 / 취소 */
   function openEditChooser(s) {
-    var body = openSheet('수정 · ' + dispName(s), '<div class="sf-btns"><button class="btn" id="edMap">📍 지도에서 위치 수정</button><button class="btn primary" id="edForm">✎ 입력창에서 수정</button><button class="btn" id="edNo">취소</button></div>');
+    var body = openSheet('수정 · ' + dispName(s), '<div class="sf-btns"><button class="btn" id="edMap">📍 지도에서 위치 수정</button><button class="btn primary" id="edForm">✎ 입력창에서 수정</button><button class="btn cancel" id="edNo">취소</button></div>');
     body.querySelector('#edMap').addEventListener('click', function () { startMoveSite(s); });
     body.querySelector('#edForm').addEventListener('click', function () { openSiteForm({}, s); });
     body.querySelector('#edNo').addEventListener('click', function () { closeSheet(); });
@@ -868,14 +1005,22 @@
 
   /* ───────── 조사구 등록·수정 ───────── */
   var lastPick = {};   /* 분야별 마지막 유형·작물 (이번 접속 동안만) */
+  function contactRowHtml(c, i) {
+    c = c || {};
+    return '<div class="ct-row" data-ci="' + i + '">' + CONTACT_FIELDS.map(function (f) {
+      return '<label><span>' + f[1] + '</span><input class="inp" data-c="' + f[0] + '"' + (f[2] === 'tel' ? ' inputmode="tel"' : '') + ' value="' + esc(c[f[0]] || '') + '"></label>';
+    }).join('') + (c.addr ? '<input type="hidden" data-c="addr" value="' + esc(c.addr) + '">' : '') + '<button type="button" class="ra del ct-del">이 연락처 지움</button></div>';
+  }
   function openSiteForm(o, existing) {
     var s = existing || {};
     var dv = s.division || o.division || activeDiv && activeDiv !== '_none' && activeDiv || (db.profile && db.profile.division);
     var lp = lastPick[dv] || {};
     var r0 = s.region && s.region.status === 'ok' ? s.region : {};
+    var noLL = !existing && !isFinite(o.lat);   /* v3.9 ＋추가: 주소로 입력 (위치는 주소 확인으로 찾음) */
+    var cts = (s.contacts && s.contacts.length ? s.contacts : [{}]);
     var html =
       (existing ? '<label class="fld">번호 (#순번 = 가는 순서 · 바꾸면 같은 읍면동의 다른 번호가 밀리거나 당겨짐)</label><input class="inp" id="fSeq" inputmode="numeric" value="' + (noOf(s) || '') + '">' : '') +
-      classifyFields(dv, s.type || lp.type, s.crop || lp.crop) +
+      classifyFields(dv, s.type || o.type || lp.type, s.crop || o.crop || lp.crop) +
       '<div class="f-grid">' +
         '<label><span>층 <b class="req" data-req>*</b></span><input class="inp" id="fFloor" inputmode="numeric" value="' + esc(s.floor || '') + '" placeholder="예: 7"></label>' +
         '<label><span>조사구 <b class="req" data-req>*</b></span><input class="inp" id="fNo" value="' + esc(s.josaguNo || '') + '" placeholder="예: 8"></label>' +
@@ -886,18 +1031,20 @@
         '<label><span>축종</span><input class="inp" id="fSpecies" value="' + esc(s.species || '') + '" placeholder="예: 한우, 돼지"></label>' +
         '<label><span>농장명</span><input class="inp" id="fFarm" value="' + esc(s.farmName || '') + '" placeholder="예: 행복농장"></label>' +
       '</div>' +
-      '<div id="fNameW"><label class="fld">이름 (응답자·업체·정미소 등)</label><input class="inp" id="fName" value="' + esc(s.name || (o.kind === '장소' ? o.name : '') || '') + '" placeholder="예: 홍길동, 달성정미소"></div>' +
-      '<label class="fld">초입주소 <b class="req" data-req>*</b></label>' +
+      '<div id="fNameW"><label class="fld">이름 (응답자·업체·정미소 등) <b class="req">*</b></label><input class="inp" id="fName" value="' + esc(s.name && s.name !== '이름 없는 조사구' ? s.name : (o.kind === '장소' ? o.name : '') || '') + '" placeholder="예: 홍길동, 달성정미소 (없으면 「없음」으로 표시)"></div>' +
+      '<label class="fld">' + (noLL ? '주소 (지번까지) ' : '초입주소 ') + '<b class="req">*</b></label>' +
       '<div class="addr-row"><input class="inp" id="fAddr" value="' + esc(s.addr || o.addr || '') + '" placeholder="예: 대구 달성군 논공읍 북리 359"><button type="button" class="btn sm" id="fChk">주소 확인</button></div>' +
-      '<div class="muted" id="fChkMsg"></div>' +
+      '<div class="muted" id="fChkMsg">' + (noLL ? '주소를 넣고 「주소 확인」을 누르면 그 위치에 핀이 만들어집니다.' : '') + '</div>' +
       '<div class="f-grid three">' +
         '<label><span>시도</span><input class="inp" id="fSido" value="' + esc(r0.sido || '') + '"></label>' +
         '<label><span>시군구</span><input class="inp" id="fSgg" value="' + esc(r0.sigungu || '') + '"></label>' +
         '<label><span>읍면동</span><input class="inp" id="fEmd" value="' + esc(r0.emd || '') + '"></label>' +
       '</div>' +
+      '<label class="fld">연락처 (이름·휴대폰·사무실·집·직급·관계)</label><div id="fCts">' + cts.map(contactRowHtml).join('') + '</div>' +
+      '<div class="row"><button type="button" class="btn sm" id="fCtAdd">＋ 연락처 추가</button></div>' +
       '<label class="fld">메모</label><textarea id="fMemo" placeholder="현장 메모 (이 기기에 암호화 저장)">' + esc(s.memo || '') + '</textarea>' +
-      '<div class="row"><button class="btn" id="fCancel">취소</button><button class="btn primary" id="fSave" style="flex:1">' + (existing ? '저장' : '조사구로 저장') + '</button></div>';
-    var body = openSheet(existing ? '조사구 수정' : '조사구 등록', html);
+      '<div class="row"><button class="btn cancel" id="fCancel">취소</button><button class="btn primary" id="fSave" style="flex:1">' + (existing ? '저장' : '조사구로 저장') + '</button></div>';
+    var body = openSheet(existing ? '조사구 수정 · ' + dispName(s) : '조사구 등록', html);
     var get = bindClassify(body);
     function isArea() { var v = get(); return v.division === 'agri' && v.type === 'area'; }
     function reqVis() {
@@ -906,48 +1053,66 @@
       body.querySelector('#fNameW').hidden = a;   /* 작물재배는 이름 대신 층·조사구로 표시 */
     }
     body.querySelector('#fDiv').addEventListener('change', reqVis); body.querySelector('#fType').addEventListener('change', reqVis); reqVis();
+    function bindCt() { body.querySelectorAll('.ct-del').forEach(function (b) { b.onclick = function () { var r = b.closest('.ct-row'); if (body.querySelectorAll('.ct-row').length > 1) r.remove(); else r.querySelectorAll('input').forEach(function (x) { x.value = ''; }); }; }); }
+    bindCt();
+    body.querySelector('#fCtAdd').addEventListener('click', function () { var w = document.createElement('div'); w.innerHTML = contactRowHtml({}, body.querySelectorAll('.ct-row').length); body.querySelector('#fCts').appendChild(w.firstChild); bindCt(); });
     /* 시도·시군구·읍면동이 비어 있으면 핀 위치로 채움 */
     var lat0 = s.lat || o.lat, lng0 = s.lng || o.lng;
     if (!r0.sido && isFinite(lat0)) regionB(lat0, lng0).then(function (r) { if (!r) return; if (!body.querySelector('#fSido').value) body.querySelector('#fSido').value = r.sido; if (!body.querySelector('#fSgg').value) body.querySelector('#fSgg').value = r.sigungu; if (!body.querySelector('#fEmd').value) body.querySelector('#fEmd').value = r.emd; });
     var found = null;
-    body.querySelector('#fChk').addEventListener('click', function () {
+    function checkAddr() {
       var q = body.querySelector('#fAddr').value.trim(), msg = body.querySelector('#fChkMsg');
-      if (!q) { msg.textContent = '초입주소를 넣어 주세요'; return; }
+      if (!q) { msg.textContent = '주소를 넣어 주세요'; return Promise.resolve(null); }
       msg.textContent = '확인 중…';
-      ensureKakao().then(function (ok) {
-        if (!ok) { msg.textContent = '주소 확인 서비스에 연결하지 못했습니다'; return; }
-        new kakao.maps.services.Geocoder().addressSearch(q, function (r, st) {
-          if (st !== kakao.maps.services.Status.OK || !r[0]) { found = null; msg.innerHTML = '<span class="warn-t">주소를 찾지 못했습니다. 지번까지 정확히 넣어 주세요.</span>'; return; }
-          var a = r[0].address || r[0].road_address || {};
-          found = { lat: +r[0].y, lng: +r[0].x, addr: r[0].address_name };
-          body.querySelector('#fSido').value = a.region_1depth_name || ''; body.querySelector('#fSgg').value = a.region_2depth_name || ''; body.querySelector('#fEmd').value = a.region_3depth_name || '';
-          msg.innerHTML = '✓ 확인됨: ' + esc(r[0].address_name) + (existing ? ' <small>(저장할 때 핀을 이 주소로 옮길지 묻습니다)</small>' : '');
+      return ensureKakao().then(function (ok) {
+        if (!ok) { msg.textContent = '주소 확인 서비스에 연결하지 못했습니다'; return null; }
+        return new Promise(function (res) {
+          new kakao.maps.services.Geocoder().addressSearch(q, function (r, st) {
+            if (st !== kakao.maps.services.Status.OK || !r[0]) { found = null; msg.innerHTML = '<span class="warn-t">주소를 찾지 못했습니다. 지번까지 정확히 넣어 주세요.</span>'; res(null); return; }
+            var a = r[0].address || r[0].road_address || {};
+            found = { lat: +r[0].y, lng: +r[0].x, addr: r[0].address_name };
+            body.querySelector('#fSido').value = a.region_1depth_name || ''; body.querySelector('#fSgg').value = a.region_2depth_name || ''; body.querySelector('#fEmd').value = a.region_3depth_name || '';
+            msg.innerHTML = '✓ 확인됨: ' + esc(r[0].address_name) + (existing ? ' <small>(저장할 때 핀을 이 주소로 옮길지 묻습니다)</small>' : '');
+            if (noLL) map.easeTo({ center: [found.lng, found.lat], zoom: Math.max(map.getZoom(), 16), offset: [0, -Math.round($('sheet').getBoundingClientRect().height / 2)] });
+            res(found);
+          });
         });
       });
-    });
-    body.querySelector('#fCancel').addEventListener('click', function () { if (existing) openSite(s.id); else closeSheet(); });
-    var rb = body.querySelector('#fReg'); if (rb) rb.addEventListener('click', function () { fillRegion(s, true).then(function () { openSiteForm(o, s); }); });
+    }
+    body.querySelector('#fChk').addEventListener('click', checkAddr);
+    body.querySelector('#fAddr').addEventListener('input', function () { found = null; });
+    body.querySelector('#fCancel').addEventListener('click', function () { if (existing) openSite(s.id); else if (navStack.length) sheetBack(); else closeSheet(); });
     body.querySelector('#fSave').addEventListener('click', function () {
       var v = get(), name = body.querySelector('#fName').value.trim(), memo = body.querySelector('#fMemo').value, addr = body.querySelector('#fAddr').value.trim();
       var more = { species: body.querySelector('#fSpecies').value.trim(), farmName: body.querySelector('#fFarm').value.trim(), josaguNo: body.querySelector('#fNo').value.trim(), floor: body.querySelector('#fFloor').value.trim(), card: body.querySelector('#fCard').value.trim(), kind: body.querySelector('#fKind').value, addr: addr };
-      if (isArea() && (!more.floor || !more.josaguNo || !addr)) { toast('작물재배는 층·조사구·초입주소가 꼭 필요합니다'); return; }
-      var sido = body.querySelector('#fSido').value.trim(), sgg = body.querySelector('#fSgg').value.trim(), emd = body.querySelector('#fEmd').value.trim();
-      var reg = sido && sgg && emd ? { basis: 'manual', sido: sido, sigungu: sgg, emd: emd, ri: (s.region && s.region.ri) || '', status: 'ok', at: nowIso() } : null;
-      lastPick[v.division] = { type: v.type, crop: v.crop };
-      if (existing) {
-        var oldKey = groupKey(s);
-        s.division = v.division; s.type = v.type; s.crop = v.crop; s.name = name || s.name; s.memo = memo; Object.assign(s, more);
-        if (reg) s.region = reg;
-        if (found && (Math.abs(found.lat - s.lat) > 1e-5 || Math.abs(found.lng - s.lng) > 1e-5) && confirm('핀 위치도 확인한 주소(' + found.addr + ')로 옮길까요?')) { s.lat = found.lat; s.lng = found.lng; }
-        if (groupKey(s) !== oldKey) s.no = nextNo(s);
-        var sq = body.querySelector('#fSeq'); if (sq && sq.value && +sq.value !== noOf(s)) renumber(s, +sq.value);
-        touch(s); persist(); toast('저장했습니다'); openSite(s.id);
-      } else {
-        var base = Object.assign({ name: name || (isArea() ? '작물재배' : o.name) || '이름 없는 조사구', lat: o.lat, lng: o.lng, memo: memo, division: v.division, type: v.type, crop: v.crop, region: reg || { status: 'pending' } }, more);
-        var ns = addSite(base);
-        if (ns.region && ns.region.status === 'ok') { ns.no = nextNo(ns); persist(); }
-        clearTemp(); toast('저장했습니다'); openSite(ns.id);
+      more.contacts = Array.prototype.map.call(body.querySelectorAll('.ct-row'), function (r) { var c = {}; r.querySelectorAll('[data-c]').forEach(function (x) { var val = x.value.trim(); if (val) c[x.getAttribute('data-c')] = val; }); return c; })
+        .filter(function (c) { return Object.keys(c).some(function (k) { return k !== 'addr'; }); });
+      var area = isArea();
+      if (area && (!more.floor || !more.josaguNo || !addr)) { toast('작물재배는 층·조사구·초입주소가 꼭 필요합니다'); return; }
+      if (!area && !addr) { toast('주소를 넣어 주세요'); return; }
+      if (!area && !name && !confirm('이름이 비어 있습니다. 핀에 「없음」으로 표시하고 저장할까요?')) return;
+      function go() {
+        var sido = body.querySelector('#fSido').value.trim(), sgg = body.querySelector('#fSgg').value.trim(), emd = body.querySelector('#fEmd').value.trim();
+        var reg = sido && sgg && emd ? { basis: 'manual', sido: sido, sigungu: sgg, emd: emd, ri: (s.region && s.region.ri) || '', status: 'ok', at: nowIso() } : null;
+        lastPick[v.division] = { type: v.type, crop: v.crop };
+        if (existing) {
+          var oldKey = groupKey(s);
+          s.division = v.division; s.type = v.type; s.crop = v.crop; s.name = area ? (s.name || '작물재배') : name; s.memo = memo; Object.assign(s, more);
+          if (reg) s.region = reg;
+          if (found && (Math.abs(found.lat - s.lat) > 1e-5 || Math.abs(found.lng - s.lng) > 1e-5) && confirm('핀 위치도 확인한 주소(' + found.addr + ')로 옮길까요?')) { s.lat = found.lat; s.lng = found.lng; }
+          if (groupKey(s) !== oldKey) s.no = nextNo(s);
+          var sq = body.querySelector('#fSeq'); if (sq && sq.value && +sq.value !== noOf(s)) renumber(s, +sq.value);
+          touch(s); persist(); toast('저장했습니다'); openSite(s.id);
+        } else {
+          var ll = noLL ? found : { lat: o.lat, lng: o.lng };
+          var base = Object.assign({ name: area ? '작물재배' : name, lat: ll.lat, lng: ll.lng, memo: memo, division: v.division, type: v.type, crop: v.crop, region: reg || { status: 'pending' } }, more);
+          var ns = addSite(base);
+          if (ns.region && ns.region.status === 'ok') { ns.no = nextNo(ns); persist(); }
+          clearTemp(); toast('저장했습니다'); openSite(ns.id); flyToVisible(ns, Math.max(map.getZoom(), 16));
+        }
       }
+      if (noLL && !found) { checkAddr().then(function (f) { if (f) go(); else toast('주소로 위치를 찾지 못해 저장하지 않았습니다'); }); return; }
+      go();
     });
   }
 
@@ -1001,60 +1166,268 @@
 
   /* ───────── 조사구 카드 ───────── */
   var selectedId = null;   /* 마지막으로 연 조사구 — 카카오·네이버 대체 지도에서 강조 */
-  function openSite(id) {
+  /* v3.9 작물재배 변동 사항 · 연락처 · 답례품 */
+  var CHANGES = ['합필', '분필', '밭으로', '논으로', '건물건축', '편입증감', '유휴지', '기타'];
+  var GIFT_ITEMS = ['답례품', '수첩', '달력'];
+  var GIFT_METHODS = ['직접', '우편', '우편함', '기타'];
+  var CONTACT_FIELDS = [['name', '이름', 'text'], ['mobile', '휴대폰', 'tel'], ['office', '사무실', 'tel'], ['home', '집', 'tel'], ['rank', '직급', 'text'], ['relation', '관계', 'text']];
+  function monthStr(d) { d = d || new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1); }
+  function isAreaSite(s) { return s.division === 'agri' && s.type === 'area'; }
+  function telA(v) { var d = String(v || '').replace(/[^\d+]/g, ''); return d ? '<a href="tel:' + esc(d) + '">' + esc(v) + '</a>' : esc(v || ''); }
+  function copyBtn(text) { return text ? '<button type="button" class="cp-btn" data-copy="' + esc(text) + '" title="주소 복사">복사</button>' : ''; }
+  function copyText(t) {
+    function fallback() { var ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); return ok; }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { toast('주소를 복사했습니다'); }, function () { toast(fallback() ? '주소를 복사했습니다' : '복사하지 못했습니다'); });
+    else toast(fallback() ? '주소를 복사했습니다' : '복사하지 못했습니다');
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-copy]'); if (!b) return;
+    e.preventDefault(); e.stopPropagation(); copyText(b.getAttribute('data-copy'));
+  }, true);
+  /* 생산량 ↔ 작물재배: 층·조사구가 같으면(시군구가 둘 다 있으면 같은 시군구) 작물재배 카드에 생산량 작물명 */
+  function normNo(v) { v = String(v == null ? '' : v).trim(); return /^\d+$/.test(v) ? String(parseInt(v, 10)) : v; }
+  function sameJosagu(a, b) {
+    if (!a.floor || !a.josaguNo || !b.floor || !b.josaguNo) return false;
+    if (normNo(a.floor) !== normNo(b.floor) || normNo(a.josaguNo) !== normNo(b.josaguNo)) return false;
+    var ra = a.region && a.region.status === 'ok' ? a.region : null, rb = b.region && b.region.status === 'ok' ? b.region : null;
+    return !(ra && rb && ra.sigungu && rb.sigungu && ra.sigungu !== rb.sigungu);
+  }
+  function prodOfArea(s) { return db.sites.filter(function (x) { return x.division === 'agri' && x.type === 'prod' && sameJosagu(x, s); }); }
+  function hasMemo(s) { return !!(String(s.memo || '').trim() || db.visits.some(function (v) { return v.siteId === s.id && (v.events || []).some(function (e) { return String(e.note || '').trim(); }); })); }
+
+  function visitHtml(s) {
+    var vs = visitsOf(s.id).filter(function (v) { return v.result || (v.events && v.events.length); }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    if (!vs.length) return '<div class="muted">아직 방문 기록이 없습니다.</div>';
+    return vs.map(function (v) {
+      var r = resultOf(v.result || (v.events && v.events.length ? 'done' : ''));
+      var notes = (v.events || []).slice().sort(function (a, b) { return a.at < b.at ? -1 : 1; });
+      return '<div class="visit"><time>' + esc(v.date.replace(/-/g, '.')) + (r ? ' <span class="vr" style="--c:' + r[2] + '">' + r[1] + '</span>' : '') + '</time>' +
+        notes.map(function (e) { var er = resultOf(e.status); return '<div class="vn">' + (!e.noTime && e.at ? '<small>' + esc(fmtTime(e.at).split(' ')[1]) + '</small> ' : '') + (er && notes.length > 1 ? '<em>' + er[1] + '</em> ' : '') + esc(e.note || '(메모 없음)') + '</div>'; }).join('') + '</div>';
+    }).join('');
+  }
+  function contactsHtml(s) {
+    var cs = (s.contacts || []).filter(function (c) { return CONTACT_FIELDS.some(function (f) { return String(c[f[0]] || '').trim(); }); });
+    if (!cs.length) return '';
+    return '<label class="fld">연락처</label>' + cs.map(function (c) {
+      return '<div class="ct-card"><b>' + esc(c.name || '(이름 없음)') + '</b>' + (c.rank ? ' <small>' + esc(c.rank) + '</small>' : '') + (c.relation ? ' <span class="chip">' + esc(c.relation) + '</span>' : '') +
+        '<div class="ct-tels">' + [c.mobile ? '📱 ' + telA(c.mobile) : '', c.office ? '🏢 ' + telA(c.office) : '', c.home ? '🏠 ' + telA(c.home) : ''].filter(Boolean).join(' · ') + '</div>' +
+        (c.addr ? '<div class="muted">' + esc(c.addr) + ' ' + copyBtn(c.addr) + '</div>' : '') + '</div>';
+    }).join('');
+  }
+  function changesHtml(s) {
+    if (!isAreaSite(s)) return '';
+    var ch = s.changes || [];
+    return '<label class="fld">변동 사항 <small>(누르면 바로 저장 · 여러 개)</small></label><div class="chg-box">' + CHANGES.map(function (c) {
+      return '<label class="chg"><input type="checkbox" data-chg="' + c + '"' + (ch.indexOf(c) >= 0 ? ' checked' : '') + '><span>' + c + '</span></label>';
+    }).join('') + '</div>' + (s.changesAt ? '<div class="muted">마지막 변경 ' + esc(fmtTime(s.changesAt)) + '</div>' : '') +
+      '<label class="fld">필지(지번) <small>— 지도에서 찍으면 지번이 지도에 표시됩니다</small></label>' +
+      ((s.jibuns || []).length ? s.jibuns.map(function (j, k) {
+        return '<div class="jb-row"><b>' + esc(j.jibun) + '</b> <small class="muted">' + esc(j.addr || '') + '</small><div class="chg-box sm">' + CHANGES.map(function (c) {
+          return '<label class="chg"><input type="checkbox" data-jchg="' + k + '" value="' + c + '"' + ((j.changes || []).indexOf(c) >= 0 ? ' checked' : '') + '><span>' + c + '</span></label>';
+        }).join('') + '<button type="button" class="ra del" data-jdel="' + k + '">지움</button></div></div>';
+      }).join('') : '<div class="muted">찍은 필지가 없습니다.</div>') +
+      '<div class="row"><button class="btn" data-act="jibun" style="flex:1">📍 지도에서 필지 찍기 (지번 표시)</button></div>';
+  }
+  function giftsHtml(s, mon) {
+    var g = (s.gifts || {})[mon] || {};
+    return '<label class="fld">🎁 답례품·수첩·달력 <input type="month" class="gm" id="giftMon" value="' + mon + '"> <small>(바꾸면 바로 저장)</small></label>' +
+      GIFT_ITEMS.map(function (it) {
+        var x = g[it] || {};
+        return '<div class="gift-row" data-gift="' + it + '"><label class="gchk"><input type="checkbox" data-g="given"' + (x.given ? ' checked' : '') + '> <b>' + it + '</b></label>' +
+          '<input type="date" class="inp sm" data-g="date" value="' + esc(x.date || '') + '">' +
+          '<select class="inp sm" data-g="method"><option value="">방법</option>' + GIFT_METHODS.map(function (m) { return '<option' + (x.method === m ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>' +
+          '<input class="inp sm" data-g="receiver" placeholder="수령자" value="' + esc(x.receiver || '') + '"></div>';
+      }).join('');
+  }
+  var giftMonth = null;
+  function openSite(id, opt) {
     var s = findSite(id); if (!s) return;
     selectedId = id;
     var ord = todayOrderOf(s.id);
-    var vs = visitsOf(s.id).slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
-    var evs = [];
-    vs.forEach(function (v) { (v.events || []).forEach(function (e) { evs.push(e); }); });
-    evs.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    var mon = giftMonth || monthStr();
+    var prods = isAreaSite(s) ? prodOfArea(s) : [];
+    var addrTxt = s.addr || (s.lat.toFixed(5) + ', ' + s.lng.toFixed(5));
     var html =
       '<div class="site-cls" style="--c:' + siteColor(s) + '">' + esc(siteLabel(s)) + (s.division ? '' : ' <button class="btn sm" data-act="cls">분야 지정</button>') + '</div>' +
-      '<div class="addr">' + esc(s.addr || (s.lat.toFixed(5) + ', ' + s.lng.toFixed(5))) + '</div>' + mapAppBtns(dispName(s), s.lat, s.lng) +
+      (!isAreaSite(s) ? '<div class="site-name">' + esc(nameOf(s)) + '</div>' : '') +
+      '<div class="addr">' + esc(addrTxt) + ' ' + copyBtn(s.addr) + '</div>' + mapAppBtns(dispName(s), s.lat, s.lng) +
       '<div class="reg-line">' + regionText(s) + (s.region && s.region.status === 'ok' ? ' <small class="muted">(법정동)</small>' : '') + '</div>' +
       (floorJosagu(s) || s.card || s.kind || s.species || s.farmName ? '<div class="site-extra">' + [floorJosagu(s) ? '<b>' + esc(floorJosagu(s)) + '</b>' : '', s.card ? '카드 <b>' + esc(s.card) + '</b>' : '', s.species ? '축종 <b>' + esc(s.species) + '</b>' : '', s.farmName ? '농장 <b>' + esc(s.farmName) + '</b>' : '', s.kind ? '구분 <b>' + esc(s.kind) + '</b>' : ''].filter(Boolean).join(' · ') + '</div>' : '') +
+      (prods.length ? '<div class="prod-link">🌾 생산량: ' + prods.map(function (p) { return '<button type="button" class="chip prod" data-prod="' + p.id + '">' + esc(p.crop || '생산량') + (nameOf(p) !== '없음' ? ' · ' + esc(nameOf(p)) : '') + '</button>'; }).join(' ') + '</div>' : '') +
       '<div>' + (ord ? '<span class="chip today">오늘 방문 ' + ord + '번</span>' : '') + (visitedToday(s.id) ? '<span class="chip done">오늘 방문함</span>' : '') + '</div>' +
+      contactsHtml(s) +
       '<div class="row">' +
         '<button class="btn primary" data-act="nav">🚗 길찾기</button>' +
         '<button class="btn" data-act="today">' + (ord ? '오늘 방문 빼기' : '＋ 오늘 방문에 추가') + '</button>' +
-        '<button class="btn" data-act="visit">✔ 방문 기록</button>' +
+        '<button class="btn" data-act="visit">✔ 방문 기록(메모)</button>' +
       '</div>' +
       '<div class="row"><button class="btn" style="flex:1" data-act="park">🅿 주변 주차장</button><button class="btn" style="flex:1" data-act="crime">🛡 이 지역 범죄 통계</button></div>' +
       '<div class="row"><button class="btn sf-go full" data-act="safe">🚨 이 핀 위치 보내기 (나 조사하러 간다)</button></div>' +
       (s.memo ? '<label class="fld">메모</label><div class="memo">' + esc(s.memo) + '</div>' : '') +
-      '<label class="fld">방문 기록 (' + evs.length + ')</label>' +
-      (evs.length ? evs.map(function (e) { return '<div class="visit"><time>' + esc(fmtTime(e.at)) + '</time>' + esc(e.note || '방문') + '</div>'; }).join('') : '<div class="muted">아직 방문 기록이 없습니다.</div>') +
+      changesHtml(s) +
+      '<label class="fld">방문 기록(메모)</label>' + visitHtml(s) +
+      '<div class="gift-box">' + giftsHtml(s, mon) + '</div>' +
       '<div class="row" style="margin-top:16px"><button class="btn" data-act="edit">✎ 수정</button><button class="btn" data-act="move">📍 위치 수정</button><button class="btn" data-act="center">지도에서 보기</button><button class="btn danger" data-act="del">삭제</button></div>';
-    var body = openSheet(dispName(s), html);
+    var keepTop = opt && opt.refresh && curView === s.id ? $('sheetBody').scrollTop : 0;
+    var body = openSheet(dispName(s), html, { view: s.id });
     curView = s.id;
+    if (keepTop) $('sheetBody').scrollTop = keepTop;
     function on(act, fn) { var b = body.querySelector('[data-act="' + act + '"]'); if (b) b.addEventListener('click', fn); }
-    on('nav', function () { openNav(s.name, s.lat, s.lng); });
-    on('today', function () { setToday(s.id, !ord); openSite(s.id); });
+    on('nav', function () { openNav(nameOf(s) === '없음' ? dispName(s) : s.name, s.lat, s.lng); });
+    on('today', function () { setToday(s.id, !ord); openSite(s.id, { refresh: true }); });
     on('visit', function () { openVisitForm(s); });
     on('cls', function () { openClassify([s.id]); });
-    on('safe', function () { openSafety({ name: s.name, addr: s.addr, lat: s.lat, lng: s.lng }); });
+    on('safe', function () { openSafety({ name: dispName(s), addr: s.addr, lat: s.lat, lng: s.lng }); });
     on('edit', function () { openSiteForm({}, s); });
     on('move', function () { startMoveSite(s); });
-    on('crime', function () { try { window.OdigoNearby.crimeSheet(s.lat, s.lng, s.name, s.addr); } catch (e) { toast('범죄 통계를 불러오지 못했습니다'); } });
-    on('park', function () { try { window.OdigoNearby.parkingNear(s.lat, s.lng, s.name, 'place'); } catch (e) { toast('주차장 정보를 불러오지 못했습니다'); } });
+    on('crime', function () { try { window.OdigoNearby.crimeSheet(s.lat, s.lng, dispName(s), s.addr); } catch (e) { toast('범죄 통계를 불러오지 못했습니다'); } });
+    on('park', function () { try { window.OdigoNearby.parkingNear(s.lat, s.lng, dispName(s), 'place'); } catch (e) { toast('주차장 정보를 불러오지 못했습니다'); } });
     on('center', function () { flyToVisible(s, Math.max(map.getZoom(), 16)); });
+    on('jibun', function () { startPickJibun(s); });
     on('del', function () {
-      if (!confirm('「' + s.name + '」을(를) 삭제할까요? 방문 기록도 함께 지워집니다.')) return;
+      if (!confirm('「' + dispName(s) + '」을(를) 삭제할까요? 방문 기록도 함께 지워집니다.')) return;
       deleteSite(s.id); closeSheet(); toast('삭제했습니다');
+    });
+    body.querySelectorAll('[data-prod]').forEach(function (b) { b.addEventListener('click', function () { var p = findSite(b.getAttribute('data-prod')); if (p) { openSite(p.id); flyToVisible(p); } }); });
+    /* 변동 사항: 누르면 바로 저장 */
+    body.querySelectorAll('[data-chg]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        s.changes = Array.prototype.filter.call(body.querySelectorAll('[data-chg]'), function (x) { return x.checked; }).map(function (x) { return x.getAttribute('data-chg'); });
+        s.changesAt = nowIso(); touch(s); persist(); toast('변동 사항을 저장했습니다');
+      });
+    });
+    body.querySelectorAll('[data-jchg]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var k = +cb.getAttribute('data-jchg'), j = s.jibuns[k]; if (!j) return;
+        j.changes = Array.prototype.filter.call(body.querySelectorAll('[data-jchg="' + k + '"]'), function (x) { return x.checked; }).map(function (x) { return x.value; });
+        j.at = nowIso(); touch(s); persist(); toast(j.jibun + ' 변동 사항을 저장했습니다');
+      });
+    });
+    body.querySelectorAll('[data-jdel]').forEach(function (b) {
+      b.addEventListener('click', function () { var k = +b.getAttribute('data-jdel'); if (!confirm((s.jibuns[k] || {}).jibun + ' 필지를 지울까요?')) return; s.jibuns.splice(k, 1); touch(s); persist(); openSite(s.id, { refresh: true }); });
+    });
+    bindGifts(body, s);
+  }
+  function bindGifts(body, s) {
+    var gm = body.querySelector('#giftMon');
+    if (gm) gm.addEventListener('change', function () { if (!gm.value) return; giftMonth = gm.value; body.querySelector('.gift-box').innerHTML = giftsHtml(s, gm.value); bindGifts(body, s); });
+    body.querySelectorAll('.gift-row').forEach(function (row) {
+      var it = row.getAttribute('data-gift');
+      function save() {
+        var mon = (body.querySelector('#giftMon') || {}).value || monthStr();
+        s.gifts = s.gifts || {}; var g = s.gifts[mon] = s.gifts[mon] || {};
+        var x = { given: row.querySelector('[data-g=given]').checked, date: row.querySelector('[data-g=date]').value, method: row.querySelector('[data-g=method]').value, receiver: row.querySelector('[data-g=receiver]').value.trim(), at: nowIso() };
+        if (x.given && !x.date) { x.date = todayStr(); row.querySelector('[data-g=date]').value = x.date; }
+        if (!x.given && !x.date && !x.method && !x.receiver) delete g[it]; else g[it] = x;
+        if (!Object.keys(g).length) delete s.gifts[mon];
+        touch(s); persist(); toast(it + ' 기록을 저장했습니다');
+      }
+      row.querySelectorAll('[data-g]').forEach(function (x) { x.addEventListener('change', save); });
+    });
+  }
+  /* 작물재배: 지도에서 필지를 눌러 지번을 찍음 */
+  function startPickJibun(s) {
+    setSheetMin(true);
+    var bar = $('moveBar'); bar.hidden = false;
+    $('moveTitle').textContent = dispName(s) + ' — 지도에서 필지를 누르세요 (여러 번 가능)';
+    $('moveSave').textContent = '끝내기'; $('moveCancel').hidden = true;
+    var busy = false;
+    function onClick(e) {
+      if (busy) return; busy = true;
+      var la = +e.lngLat.lat.toFixed(7), lo = +e.lngLat.lng.toFixed(7);
+      jibunAt(la, lo).then(function (r) {
+        busy = false;
+        if (!r) { toast('이 위치의 지번을 찾지 못했습니다'); return; }
+        s.jibuns = s.jibuns || [];
+        if (s.jibuns.some(function (j) { return j.jibun === r.jibun && j.addr === r.addr; })) { toast(r.jibun + '은(는) 이미 찍었습니다'); return; }
+        s.jibuns.push({ jibun: r.jibun, addr: r.addr, lat: la, lng: lo, changes: [], at: nowIso() });
+        touch(s); persist(); toast(r.jibun + ' 필지를 표시했습니다');
+      });
+    }
+    map.on('click', onClick);
+    function end() { map.off('click', onClick); bar.hidden = true; $('moveSave').textContent = '이 위치로 저장'; $('moveCancel').hidden = false; moving = null; }
+    if (moving) moving.cancel();
+    moving = { cancel: end };
+    $('moveSave').onclick = function () { end(); openSite(s.id, { refresh: true }); };
+  }
+  function jibunAt(lat, lng) {
+    return ensureKakao().then(function (ok) {
+      if (!ok) return null;
+      return new Promise(function (res) {
+        try {
+          new kakao.maps.services.Geocoder().coord2Address(lng, lat, function (r, st) {
+            if (st !== kakao.maps.services.Status.OK || !r.length || !r[0].address) { res(null); return; }
+            var a = r[0].address, j = (a.mountain_yn === 'Y' ? '산' : '') + a.main_address_no + (a.sub_address_no && a.sub_address_no !== '0' ? '-' + a.sub_address_no : '');
+            res({ jibun: j, addr: a.address_name });
+          });
+        } catch (e) { res(null); }
+      });
     });
   }
   function openVisitForm(s) {
-    var body = openSheet('방문 기록 · ' + s.name,
-      '<label class="fld">방문 메모 (선택)</label><textarea id="visitNote" placeholder="예: 현장 확인 완료, 다음 주 재방문"></textarea>' +
-      '<div class="row"><button class="btn primary full" id="visitSave">지금 시각으로 방문 기록 저장</button></div>' +
-      '<div class="row"><button class="btn full" id="visitBack">돌아가기</button></div>');
+    var body = openSheet('방문 기록(메모) · ' + dispName(s),
+      '<label class="fld">방문 날짜</label><input type="date" class="inp" id="visitDate" value="' + todayStr() + '" max="' + todayStr() + '">' +
+      '<label class="fld">결과</label><div class="vr-pick">' + VISIT_RESULTS.map(function (r, i) {
+        return '<label class="vr-opt" style="--c:' + r[2] + '"><input type="radio" name="vres" value="' + r[0] + '"' + (i === 0 ? ' checked' : '') + '><span>' + r[1] + '</span></label>';
+      }).join('') + '</div>' +
+      '<label class="fld">메모 (선택)</label><textarea id="visitNote" placeholder="예: 현장 확인 완료, 다음 주 재방문"></textarea>' +
+      '<div class="row"><button class="btn primary full" id="visitSave">방문 기록 저장</button></div>');
     body.querySelector('#visitSave').addEventListener('click', function () {
-      addVisitEvent(s.id, body.querySelector('#visitNote').value.trim());
+      var d = body.querySelector('#visitDate').value || todayStr(), r = (body.querySelector('input[name=vres]:checked') || {}).value || 'done';
+      addVisitEvent(s.id, body.querySelector('#visitNote').value.trim(), d, r);
       toast('방문 기록을 저장했습니다'); openSite(s.id);
     });
-    body.querySelector('#visitBack').addEventListener('click', function () { openSite(s.id); });
   }
+
+  /* ───────── v3.9 답례품·수첩·달력 월별 조회 ───────── */
+  function openGifts(o) {
+    o = o || {};
+    var mon = o.mon || giftMonth || monthStr(), item = o.item || '', dsel = o.div != null ? o.div : '_mine', only = o.only || '';
+    var md = myDivs();
+    var list = db.sites.filter(function (s) {
+      if (dsel === '_mine') return !md.length || md.indexOf(s.division) >= 0;
+      if (dsel) return s.division === dsel;
+      return true;
+    });
+    var items = item ? [item] : GIFT_ITEMS;
+    function rec(s, it) { return ((s.gifts || {})[mon] || {})[it] || null; }
+    if (only === 'given') list = list.filter(function (s) { return items.some(function (it) { var r = rec(s, it); return r && r.given; }); });
+    if (only === 'not') list = list.filter(function (s) { return items.some(function (it) { var r = rec(s, it); return !(r && r.given); }); });
+    var cnt = {}; GIFT_ITEMS.forEach(function (it) { cnt[it] = list.filter(function (s) { var r = rec(s, it); return r && r.given; }).length; });
+    var groups = {}, gk = [];
+    sortByNo(list).forEach(function (s) { var k = siteLabel(s); if (!groups[k]) { groups[k] = []; gk.push(k); } groups[k].push(s); });
+    gk.sort(natCmp);
+    var html = '<div class="gift-flt"><input type="month" class="inp" id="gfMon" value="' + mon + '">' +
+      '<select class="inp" id="gfItem"><option value="">답례품·수첩·달력 모두</option>' + GIFT_ITEMS.map(function (it) { return '<option' + (it === item ? ' selected' : '') + '>' + it + '</option>'; }).join('') + '</select>' +
+      '<select class="inp" id="gfDiv"><option value="_mine"' + (dsel === '_mine' ? ' selected' : '') + '>내 주요업무분야</option><option value=""' + (dsel === '' ? ' selected' : '') + '>모든 분야</option>' + DIVISIONS.map(function (d) { return '<option value="' + d.id + '"' + (dsel === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('') + '</select>' +
+      '<select class="inp" id="gfOnly"><option value="">전체 조사구</option><option value="given"' + (only === 'given' ? ' selected' : '') + '>지급한 곳만</option><option value="not"' + (only === 'not' ? ' selected' : '') + '>아직 안 준 곳만</option></select></div>' +
+      '<div class="gift-sum">' + mon.replace('-', '년 ') + '월 · 조사구 ' + list.length + '곳 · ' + GIFT_ITEMS.map(function (it) { return it + ' <b>' + cnt[it] + '</b>'; }).join(' · ') + '</div>';
+    if (!list.length) html += '<p class="muted">조건에 맞는 조사구가 없습니다.</p>';
+    gk.forEach(function (k) {
+      html += '<details class="tr l1" open><summary>' + esc(k) + ' <em>' + groups[k].length + '</em></summary><table class="gift-tb"><tr><th>조사구</th>' + items.map(function (it) { return '<th>' + it + '</th>'; }).join('') + '</tr>' +
+        groups[k].map(function (s) {
+          return '<tr data-gs="' + s.id + '"><td><b>' + esc(isAreaSite(s) ? floorJosagu(s) + (noOf(s) ? ' #' + noOf(s) : '') : nameOf(s)) + '</b><small>' + esc(emdOf(s)) + '</small></td>' + items.map(function (it) {
+            var r = rec(s, it);
+            return r && r.given ? '<td class="ok">✓ ' + esc((r.date || '').slice(5).replace('-', '.')) + '<small>' + esc([r.method, r.receiver].filter(Boolean).join(' · ')) + '</small></td>' : '<td class="no">–</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</table></details>';
+    });
+    html += '<p class="muted">조사구를 누르면 그 위치로 이동합니다. 지급 기록은 조사구 카드 아래 「🎁 답례품·수첩·달력」에서 넣습니다.</p>';
+    var body = openSheet('🎁 답례품·수첩·달력', html);
+    function re() { openGifts({ mon: body.querySelector('#gfMon').value || mon, item: body.querySelector('#gfItem').value, div: body.querySelector('#gfDiv').value, only: body.querySelector('#gfOnly').value }); }
+    ['#gfMon', '#gfItem', '#gfDiv', '#gfOnly'].forEach(function (q) { body.querySelector(q).addEventListener('change', re); });
+    body.querySelectorAll('[data-gs]').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        var s = findSite(tr.getAttribute('data-gs')); if (!s) return;
+        giftMonth = body.querySelector('#gfMon').value || mon;
+        if (!markers[s.id]) { activeDiv = null; mapFilter = null; renderMarkers(); renderDivBtns(); }
+        flyToVisible(s, Math.max(map.getZoom(), 16)); blinkPin(s.id);
+        body.querySelectorAll('tr.sel').forEach(function (x) { x.classList.remove('sel'); }); tr.classList.add('sel');
+      });
+      tr.addEventListener('dblclick', function () { var s = findSite(tr.getAttribute('data-gs')); if (s) openSite(s.id); });
+    });
+  }
+  $('btnGift').addEventListener('click', function () { if (!db.profile) { openProfile(true); return; } openGifts(); });
 
   /* ───────── 길찾기 (외부 앱) ───────── */
   function openAppOrWeb(appUrl, webUrl) {
@@ -1211,7 +1584,7 @@
     tempMarker = new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([r.lng, r.lat]).addTo(map);
     if (!noFly) map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
     var wrap = document.createElement('div');
-    wrap.innerHTML = '<b>' + esc(r.name) + '</b><div class="pop-addr">' + esc(r.addr || (r.lat.toFixed(5) + ', ' + r.lng.toFixed(5) + ' · 주소 확인 중…')) + '</div>' + mapAppBtns(r.name, r.lat, r.lng) +
+    wrap.innerHTML = '<b>' + esc(r.name) + '</b> <span class="cpw">' + copyBtn(r.addr) + '</span><div class="pop-addr">' + esc(r.addr || (r.lat.toFixed(5) + ', ' + r.lng.toFixed(5) + ' · 주소 확인 중…')) + '</div>' + mapAppBtns(r.name, r.lat, r.lng) +
       '<button class="btn primary full" data-s>조사구로 등록</button>' +
       '<button class="btn sf-go full" data-sf style="margin-top:6px">🚨 이 위치 보내기</button>';
     var pop = new maplibregl.Popup({ offset: 40, closeButton: true, closeOnClick: false, maxWidth: '280px' })
@@ -1260,6 +1633,7 @@
       if (!a) { if (ad) ad.textContent = r.lat.toFixed(5) + ', ' + r.lng.toFixed(5); return; }
       r.addr = a; r.name = a;
       if (b) b.textContent = a;
+      var cw = wrap.querySelector('.cpw'); if (cw) cw.innerHTML = copyBtn(a);
       if (ad) ad.textContent = '';
     });
   }
@@ -1428,7 +1802,7 @@
     var body = openSheet('ⓘ 어디고 정보',
       '<p><b>어디고 ' + APP_VERSION + '</b> · 위치 현장조사지원' + (db.profile ? ' · ' + esc(db.profile.nickname) + ' (' + esc(divOf(db.profile.division).name) + ')' : '') + '</p>' +
       storeNotice() +
-      '<div class="row"><button class="btn" id="goSet">⚙ 내 설정</button><button class="btn" id="goHome">나의 조사구 현황</button></div>' +
+      '<div class="row"><button class="btn" id="goSet">⚙ 내 설정</button><button class="btn" id="goHome">나의 조사구 현황</button><button class="btn" id="goGift">🎁 답례품·수첩·달력</button></div>' +
       '<label class="fld">자료 파일 (암호화)</label>' +
       '<div class="row"><button class="btn" id="goShare" style="flex:1">📤 업무별 자료 공유</button><label class="btn" style="flex:1;text-align:center">📂 자료 파일 가져오기<input id="bkLoad" type="file" accept="application/json,.json,.odigo" hidden></label></div>' +
       '<div class="row"><button class="btn" id="bkSave" style="flex:1">💾 전체 백업 저장</button></div>' +
@@ -1450,6 +1824,7 @@
     body.querySelector('#goSet').addEventListener('click', function () { openProfile(!db.profile); });
     body.querySelector('#goHome').addEventListener('click', function () { if (db.profile) openHome(); else openProfile(true); });
     body.querySelector('#bkSave').addEventListener('click', exportBackup);
+    body.querySelector('#goGift').addEventListener('click', function () { if (db.profile) openGifts(); else openProfile(true); });
     body.querySelector('#goShare').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openExport({ div: db.profile && db.profile.division }); });
     body.querySelector('#goXls').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openExcel({ div: db.profile && db.profile.division }); });
     body.querySelector('#goTenar').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openTenarImport(); });
@@ -1489,14 +1864,22 @@
   }
   function previewMerge(inc, scope) {
     var have = {}; db.sites.forEach(function (s) { have[s.id] = s; });
-    var add = 0, newer = 0, same = 0;
-    inc.sites.forEach(function (s) { if (!s || !s.id || !isFinite(s.lat)) return; var h = have[s.id]; if (!h) add++; else if ((s.updatedAt || '') > (h.updatedAt || '')) newer++; else same++; });
+    var add = 0, newer = 0, same = 0, fill = 0;
+    /* v3.9: 이미 있는 조사구라도 비어 있는 연락처·층·조사구·작물은 채움 (텐아르에서 새로 가져온 경작자 정보 등) */
+    function blanks(h, s) {
+      var f = {};
+      if ((!h.contacts || !h.contacts.length) && s.contacts && s.contacts.length) f.contacts = s.contacts;
+      ['floor', 'josaguNo', 'crop', 'farmName', 'species'].forEach(function (k) { if (!h[k] && s[k]) f[k] = s[k]; });
+      if ((!h.name || h.name === '이름 없는 조사구' || /^생산량 핀$/.test(h.name)) && s.name) f.name = s.name;
+      return Object.keys(f).length ? f : null;
+    }
+    inc.sites.forEach(function (s) { if (!s || !s.id || !isFinite(s.lat)) return; var h = have[s.id]; if (!h) add++; else if ((s.updatedAt || '') > (h.updatedAt || '')) newer++; else { same++; if (blanks(h, s)) fill++; } });
     var vh = {}; db.visits.forEach(function (v) { vh[v.id] = 1; });
     var vadd = inc.visits.filter(function (v) { return v && v.id && !vh[v.id]; }).length;
     var sc = scope && scope.title ? '<p class="x-sum"><b>' + esc(scope.title) + '</b>' + (scope.from ? ' · 보낸 사람 ' + esc(scope.from) : '') + ' · 조사구 ' + (scope.sites || 0) + '곳</p>' : (scope && scope.division === 'all' ? '<p class="x-sum">전체 백업 파일</p>' : '');
     var body = openSheet('불러올 내용 확인', sc +
-      '<table class="kv"><tr><th>새 조사구</th><td>' + add + '곳</td></tr><tr><th>더 최신으로 바뀜</th><td>' + newer + '곳</td></tr><tr><th>이미 있음(그대로)</th><td>' + same + '곳</td></tr><tr><th>새 방문 기록</th><td>' + vadd + '건</td></tr></table>' +
-      '<div class="row"><button class="btn primary" id="mgGo" style="flex:1">합치기</button><button class="btn" id="mgNo">취소</button></div>');
+      '<table class="kv"><tr><th>새 조사구</th><td>' + add + '곳</td></tr><tr><th>더 최신으로 바뀜</th><td>' + newer + '곳</td></tr><tr><th>이미 있음(그대로)</th><td>' + same + '곳' + (fill ? ' <small>(그중 ' + fill + '곳은 빈 연락처·층·조사구를 채움)</small>' : '') + '</td></tr><tr><th>새 방문 기록</th><td>' + vadd + '건</td></tr></table>' +
+      '<div class="row"><button class="btn primary" id="mgGo" style="flex:1">합치기</button><button class="btn cancel" id="mgNo">취소</button></div>');
     body.querySelector('#mgNo').addEventListener('click', function () { closeSheet(); toast('취소했습니다. 기존 자료는 그대로입니다.'); });
     body.querySelector('#mgGo').addEventListener('click', function () {
       /* 열쇠를 잃은 상태에서 백업으로 되살릴 때: 열 수 없는 자료는 보관하고 새 금고에 합침 */
@@ -1511,7 +1894,12 @@
         if (!s || !s.id || !isFinite(s.lat)) return;
         var h = have[s.id];
         if (!h) db.sites.push(s);
-        else if ((s.updatedAt || '') > (h.updatedAt || '')) db.sites[db.sites.indexOf(h)] = s;
+        else if ((s.updatedAt || '') > (h.updatedAt || '')) {
+          /* 내가 어디고에서 넣은 변동 사항·필지·답례품·연락처는 남김 */
+          ['changes', 'jibuns', 'gifts', 'changesAt'].forEach(function (k) { if (h[k] && s[k] == null) s[k] = h[k]; });
+          if ((!s.contacts || !s.contacts.length) && h.contacts && h.contacts.length) s.contacts = h.contacts;
+          db.sites[db.sites.indexOf(h)] = s;
+        } else { var f = blanks(h, s); if (f) { Object.assign(h, f); h.updatedAt = nowIso(); } }
       });
       inc.visits.forEach(function (v) { if (v && v.id && !vh[v.id]) db.visits.push(v); });
       if (!db.profile && inc.profile) db.profile = inc.profile;
@@ -1573,7 +1961,7 @@
   /* 주변정보·레이어·안전 연락 모듈이 쓰는 공용 기능 */
   window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
     ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
-    setPinLabels: setPinLabels, mapAppBtns: mapAppBtns, pinVars: pinVars, openPinSettings: function () { if (db.profile) openPinSettings(); else openProfile(true); },
+    setPinLabels: setPinLabels, mapAppBtns: mapAppBtns, copyBtn: copyBtn, pinVars: pinVars, openPinSettings: function () { if (db.profile) openPinSettings(); else openProfile(true); },
     getProfile: function () { return db.profile; },
     fitSites: fitSites, previewMerge: previewMerge, exportBackup: function () { exportBackup(); },
     /* files.js(공유·엑셀)용 자료 창구 */
@@ -1591,8 +1979,9 @@
       addMany: function (items) {
         var now = nowIso();
         items.forEach(function (x) {
-          db.sites.push({ id: uid(), name: x.name || '이름 없는 조사구', addr: x.addr || '', lat: +x.lat, lng: +x.lng, memo: x.memo || '',
+          db.sites.push({ id: uid(), name: x.name || '', addr: x.addr || '', lat: +x.lat, lng: +x.lng, memo: x.memo || '',
             josaguNo: x.josaguNo || '', floor: x.floor || '', card: x.card || '', kind: x.kind || '', species: x.species || '', farmName: x.farmName || '',
+            contacts: x.contacts || [], changes: [], jibuns: [], gifts: {},
             division: x.division || null, type: x.type || null, crop: x.crop || null, region: x.region || null, createdAt: now, updatedAt: now });
         });
         persist(); refillRegions(false);

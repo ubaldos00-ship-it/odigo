@@ -219,7 +219,7 @@
     var body = A().openSheet('📥 엑셀로 조사구 올리기',
       '<p class="muted">엑셀(.xlsx·.xls·.csv) 한 줄이 조사구 하나입니다. 업무분야·조사유형·작물 칸이 비어 있으면 아래에서 고른 값으로 넣습니다.</p>' +
       scopeFields(o) +
-      '<div class="row"><button class="btn" id="xTpl">📄 엑셀 양식 받기</button><label class="btn primary" style="flex:1;text-align:center">📂 엑셀 파일 고르기<input type="file" id="xFile" accept=".xlsx,.xls,.csv" hidden></label></div>' +
+      '<div class="row"><button class="btn" id="xTpl">📄 엑셀 양식 받기</button><label class="btn primary" style="flex:1;text-align:center">📤 엑셀 파일 업로드<input type="file" id="xFile" accept=".xlsx,.xls,.csv" hidden></label></div>' +
       '<p class="muted">텐아르 조사구 양식도 그대로 올릴 수 있습니다. 위도·경도가 없으면 주소·지번으로 위치를 찾습니다(배포 주소에서 동작).</p>');
     var get = bindScope(body, o, false);
     body.querySelector('#xTpl').addEventListener('click', templateFile);
@@ -348,7 +348,8 @@
   /* ───────── 텐아르 핀 가져오기 (같은 휴대폰·같은 브라우저) ─────────
      텐아르(/home)와 어디고(/odigo)는 같은 사이트 주소라 브라우저 저장소를 함께 씀.
      텐아르는 자료를 기기키(__tenar_secure_device_key_v1)로 AES-GCM 암호화해 두므로 그 키로 풀어 읽기만 함(텐아르 자료는 바꾸지 않음).
-     전화번호·담당자 연락처는 가져오지 않음. */
+     v3.9: 사용자 요청(2026-11-08)으로 연락처도 가져옴 — 조사구 전화·관리인, 생산량은 통합조사표(tonghabSave_) 연락처(이름·주소·전화)와 층·조사구.
+     가져온 연락처는 어디고 금고(기기 암호화)에만 저장. */
   var TENAR_KEY = '__tenar_secure_device_key_v1';
   var TENAR_TYPES = [
     { store: 'tenarAreaSurveyPlotsEncrypted', label: '작물재배 조사구', type: 'area' },
@@ -382,6 +383,28 @@
       }, function () { return { err: 'decrypt' }; });
     });
   }
+  /* 통합조사표(생산량) 저장 자료: tonghabSave_<key> = {nbFloor, nbSurveyPlot, contactName, contactAddr, contactPhone, ...} (평문 또는 기기키 암호화) */
+  var TH = {};
+  function readTenarObj(raw) {
+    var o; try { o = JSON.parse(raw); } catch (e) { return Promise.resolve(null); }
+    if (!o || typeof o !== 'object') return Promise.resolve(null);
+    if (o.tenarSecure !== true) return Promise.resolve(o);
+    if (o.secureType !== 'device-cache') return Promise.resolve(null);
+    return tenarKey().then(function (k) {
+      if (!k) return null;
+      return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u8(o.iv) }, k, b64u8(o.ciphertext)).then(function (pt) { try { return JSON.parse(new TextDecoder().decode(pt)); } catch (e) { return null; } }, function () { return null; });
+    });
+  }
+  function loadTonghab() {
+    var keys = [];
+    try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf('tonghabSave_') === 0) keys.push(k); } } catch (e) {}
+    TH = {};
+    return Promise.all(keys.map(function (k) {
+      var raw = null; try { raw = localStorage.getItem(k); } catch (e) {}
+      return raw ? readTenarObj(raw).then(function (o) { if (o) TH[k.slice(12)] = o; }) : null;
+    })).then(function () { return TH; }, function () { return TH; });
+  }
+  function thOf(r) { var k = r.surveyId || r.surveyKey || ''; return k && TH[k] ? TH[k] : null; }
   /* 텐아르 시각("2026-10-12 00:02" 등)을 비교 가능한 형태로 — 어디고에서 고친 뒤면 어디고 쪽이 남음 */
   function tTime(t) { t = String(t || '').trim(); return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.replace(' ', 'T') : ''; }
   function okLL(la, lo) { return isFinite(la) && isFinite(lo) && la > 32 && la < 40 && lo > 124 && lo < 132; }
@@ -392,9 +415,13 @@
     var base = { id: 'tenar:' + cfg.type + ':' + (r.id || (la.toFixed(6) + ',' + lo.toFixed(6))), lat: la, lng: lo, division: 'agri', type: cfg.type,
       createdAt: tTime(r.createdAt) || now, updatedAt: tTime(r.updatedAt) || tTime(r.createdAt) || '2000-01-01T00:00', source: 'tenar' };
     if (cfg.fav) {
-      var crop = String(r.crop || '').trim();
-      return Object.assign(base, { name: r.name || r.label || r.jibunAddress || '생산량 핀', addr: r.jibunAddress || r.addr || r.roadAddress || '', memo: r.memo || '',
-        crop: T.CROPS.indexOf(crop) >= 0 ? crop : null, josaguNo: '', floor: '', card: '', kind: '', region: null });
+      var th = thOf(r) || {};
+      var crop = String(r.crop || th.__crop || '').trim();
+      var cName = String(th.contactName || '').trim(), cPhone = String(th.contactPhone || '').trim(), cAddr = String(th.contactAddr || '').trim();
+      var cts = cName || cPhone || cAddr ? [{ name: cName, mobile: cPhone, addr: cAddr, relation: '경작자' }].map(function (c) { Object.keys(c).forEach(function (k) { if (!c[k]) delete c[k]; }); return c; }) : [];
+      var nm = cName || (r.name && r.name !== r.jibunAddress ? r.name : '') || '';
+      return Object.assign(base, { name: nm, addr: r.jibunAddress || r.addr || r.roadAddress || th.address || '', memo: r.memo || '',
+        crop: T.CROPS.indexOf(crop) >= 0 ? crop : null, josaguNo: String(th.nbSurveyPlot || '').replace(/^0+(?=\d)/, ''), floor: String(th.nbFloor || '').replace(/^0+(?=\d)/, ''), card: '', kind: '', contacts: cts, region: null });
     }
     var no = String(r.josagu || '').replace(/^0+(?=\d)/, ''), fl = String(r.floor || '').replace(/^0+(?=\d)/, '');
     var kind = String(r.kind || '').trim(), memoParts = [];
@@ -403,15 +430,21 @@
     if (kind && !kindOk && !species) memoParts.push((cfg.kindLabel || '구분') + ' ' + kind);
     if (r.note) memoParts.push(r.note);
     if (r.memo) memoParts.push(r.memo);
-    var name = cfg.type === 'area' ? ['작물재배', no ? no + '조사구' : '', r.number ? '#' + r.number : ''].filter(Boolean).join(' ') : (r.name || cfg.label + (r.number ? ' ' + r.number : ''));
-    return Object.assign(base, { name: name, addr: r.address1 || '', memo: memoParts.join(' / '), crop: null, josaguNo: no, floor: fl, card: '', kind: kindOk && !species ? kind : '', species: species, farmName: r.farmName || '',
+    var name = cfg.type === 'area' ? ['작물재배', no ? no + '조사구' : '', r.number ? '#' + r.number : ''].filter(Boolean).join(' ') : (r.name || '');
+    var cts = [];
+    if (r.phone) cts.push({ name: cfg.type === 'livestock' ? '경영주' : (r.name || ''), mobile: String(r.phone), relation: cfg.type === 'livestock' ? '경영주' : '' });
+    if (r.manager || r.managerPhone) cts.push({ name: r.manager || '관리인', mobile: String(r.managerPhone || ''), relation: '관리인' });
+    cts.forEach(function (c) { Object.keys(c).forEach(function (k) { if (!c[k]) delete c[k]; }); });
+    var nn = Number(r.number);
+    return Object.assign(base, { name: name, addr: r.address1 || '', memo: memoParts.join(' / '), crop: null, josaguNo: no, floor: fl, card: '', kind: kindOk && !species ? kind : '', species: species, farmName: r.farmName || '', contacts: cts,
+      no: cfg.type === 'area' && isFinite(nn) && nn > 0 ? nn : undefined,
       region: r.sido && r.sigungu && r.eupmyeondong ? { basis: 'tenar', sido: r.sido, sigungu: r.sigungu, emd: r.eupmyeondong, ri: '', status: 'ok', at: now } : null });
   }
   function openTenarImport() {
     var T = D();
     if (!T.profile()) { A().toast('먼저 내 설정을 해 주세요'); return; }
     var body = A().openSheet('📍 텐아르 핀 가져오기', '<p class="muted">이 휴대폰(이 브라우저)에 저장된 텐아르 자료를 찾는 중…</p>');
-    Promise.all(TENAR_TYPES.map(function (c) { return readTenar(c.store); })).then(function (res) {
+    loadTonghab().then(function () { return Promise.all(TENAR_TYPES.map(function (c) { return readTenar(c.store); })); }).then(function (res) {
       var found = [], lockErr = false;
       res.forEach(function (a, i) {
         if (a && a.err) { lockErr = true; return; }
@@ -428,7 +461,7 @@
         return;
       }
       var have = {}; T.sites().forEach(function (s) { have[s.id] = 1; });
-      body.innerHTML = '<p class="muted">텐아르 자료는 읽기만 하고 바꾸지 않습니다. 전화번호·담당자 연락처는 가져오지 않습니다. 모두 <b>농어업과</b>의 해당 업무로 들어갑니다.</p>' +
+      body.innerHTML = '<p class="muted">텐아르 자료는 읽기만 하고 바꾸지 않습니다. 연락처(전화·관리인, 생산량 경작자 이름·주소·전화)와 층·조사구도 함께 가져와 이 기기에 암호화 저장합니다. 모두 <b>농어업과</b>의 해당 업무로 들어갑니다.</p>' +
         found.map(function (f, i) {
           var t = T.typeOf('agri', f.cfg.type), nw = f.sites.filter(function (s) { return !have[s.id]; }).length;
           return '<label class="un-row"><input type="checkbox" data-i="' + i + '" checked><span><b>' + esc(f.cfg.label) + ' → ' + esc(t ? t.name : '') + '</b><small>' + f.sites.length + '곳' +
@@ -486,6 +519,9 @@
     var o; try { o = JSON.parse(text); } catch (e) { A().toast('텐아르 파일이 아닙니다'); return; }
     if (o && o.odigoSecure) { A().toast('어디고 파일입니다. ⓘ › 「자료 파일 가져오기」로 여세요'); return; }
     function done(d) {
+      loadTonghab().then(function () { done2(d); });
+    }
+    function done2(d) {
       var r = tenarFileToSites(d);
       if (!r.sites.length) { A().toast('이 파일에서 가져올 텐아르 핀을 찾지 못했습니다 (위치 없는 핀 제외)'); return; }
       var desc = Object.keys(r.cnt).map(function (k) { return k + ' ' + r.cnt[k]; }).join(' · ');

@@ -201,7 +201,7 @@
   function parkHtml(p) {
     return '<div class="pub-tag">공공데이터 · 주차장</div>' +
       '<b>' + esc(p.n) + '</b>' +
-      '<div class="pop-addr">' + esc(p.a || '') + '</div>' +
+      '<div class="pop-addr">' + esc(p.a || '') + ' ' + (app().copyBtn ? app().copyBtn(p.a || '') : '') + '</div>' +
       '<table class="kv">' +
       '<tr><th>구분</th><td>' + esc([p.se, p.ty].filter(Boolean).join(' · ') || '정보 없음') + '</td></tr>' +
       '<tr><th>요금</th><td>' + esc(fees(p)) + '</td></tr>' +
@@ -381,7 +381,7 @@
     wrap.className = 'pub-pop';
     wrap.innerHTML = '<div class="pub-tag">공공데이터 · CCTV 설치 위치</div>' +
       '<b>' + esc(purposes) + '</b>' +
-      '<div class="pop-addr">' + esc(c[4] || '') + '</div>' + (app().mapAppBtns ? app().mapAppBtns('CCTV ' + (c[4] || ''), c[0], c[1]) : '') +
+      '<div class="pop-addr">' + esc(c[4] || '') + ' ' + (app().copyBtn ? app().copyBtn(c[4] || '') : '') + '</div>' + (app().mapAppBtns ? app().mapAppBtns('CCTV ' + (c[4] || ''), c[0], c[1]) : '') +
       '<table class="kv">' +
       '<tr><th>카메라</th><td>' + c[2] + '대</td></tr>' +
       (c[7] ? '<tr><th>촬영방면</th><td>' + esc(c[7]) + ' <span class="muted">(제공값)</span></td></tr>' : '') +

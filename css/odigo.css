@@ -569,3 +569,80 @@ body.pin-labels .maplibregl-marker.pin-wrap .pin-label { display: block; }
 .pin.s-ring { transform: none; border-radius: 50%; background: #fff; border: calc(var(--pd, 22px) * .26) solid var(--pc); width: var(--pd, 22px); height: var(--pd, 22px); box-shadow: 0 1px 3px rgba(0,0,0,.35); }
 .pin.s-ring i { color: var(--pc); font-size: calc(var(--pn, 11px) * .85); }
 .pin.s-hexagon i, .pin.s-pentagon i, .pin.s-octagon i, .pin.s-tridown i, .pin.s-cross i { transform: none; font-size: var(--pn, 11px); }
+
+/* ───────── v3.9 ───────── */
+/* 4. 뒤로·접기·닫기 = 동그라미 버튼 (조금 크게) · 취소 버튼도 동그라미 안 ✕ */
+.sheet-close.circ { width: 40px; height: 40px; flex: none; border: 1.5px solid #cfd6d3; border-radius: 50%; background: #fff; color: #3d4a45; font-size: 19px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; margin-left: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+#sheetBack.circ { margin: 0 8px 0 0; font-size: 26px; font-weight: 700; padding-bottom: 3px; }
+#sheetClose.circ { color: #c92a2a; border-color: #f1b5b5; }
+.btn.cancel { border-radius: 999px; padding-left: 10px; }
+.btn.cancel::before { content: '✕'; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-right: 6px; border-radius: 50%; border: 1.5px solid currentColor; font-size: 11px; vertical-align: -1px; }
+.move-bar .btn#moveCancel { border-radius: 999px; }
+.maplibregl-popup-close-button { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid #cfd6d3 !important; background: #fff; font-size: 17px; line-height: 24px; top: 4px; right: 4px; }
+/* 5. ⓘ 를 조회수 옆으로 */
+.counter-strip { display: flex; align-items: center; gap: 3px; }
+.cs-info { margin-left: 5px; width: 22px; height: 22px; border-radius: 50%; border: 1.3px solid #9aa7a2; background: #fff; color: #33433d; font-size: 13px; line-height: 1; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+/* 3. 주소 복사 */
+.cp-btn { border: 1px solid #c9d2ce; background: #f6f8f7; color: #3d4a45; border-radius: 6px; padding: 1px 6px; font-size: 11px; vertical-align: 1px; cursor: pointer; }
+.cpw .cp-btn { margin-left: 2px; }
+.site-name { font-weight: 800; font-size: 15.5px; margin: 2px 0; }
+/* 6. 핀 설정 버튼 위 */
+.ps-top { position: sticky; top: -12px; z-index: 2; background: #fff; padding: 6px 0; margin: 6px 0; }
+/* 11. 목록에서 고른 행 · 핀 깜빡임 */
+.plist-item.sel { background: #eef6ff; }
+.pin-wrap.blink .pin { animation: pinBlink .5s ease-in-out 0s 5 alternate; }
+@keyframes pinBlink { from { transform: scale(1); filter: none; } to { transform: scale(1.45); filter: drop-shadow(0 0 6px #fff) drop-shadow(0 0 4px #1c7ed6); } }
+.pin-wrap.blink .pin.s-drop { animation-name: pinBlinkDrop; }
+@keyframes pinBlinkDrop { from { transform: rotate(-45deg) scale(1); } to { transform: rotate(-45deg) scale(1.45); } }
+/* 15. 전체 / 메모 · ＋추가 */
+.seg { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.seg-b { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 14px; font-size: 13.5px; font-weight: 700; }
+.seg-b.on { background: #19352e; color: #fff; border-color: #19352e; }
+.seg .add-b { margin-left: auto; border-radius: 999px; padding: 7px 14px; }
+.chip.memo { background: #fff3bf; padding: 0 5px; }
+.chip.vr, .vr { background: color-mix(in srgb, var(--c) 14%, #fff); color: var(--c); font-weight: 700; }
+.vr { display: inline-block; font-size: 11.5px; padding: 1px 7px; border-radius: 999px; margin-left: 4px; }
+.chg-t { color: #b35c00; font-style: normal; font-weight: 700; }
+/* 9. 드롭다운 트리식 */
+.flt.dis select { color: #9aa5a0; background: #f3f5f4; }
+/* 16. 방문 결과 */
+.vr-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.vr-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.vr-opt span { display: inline-block; padding: 8px 13px; border-radius: 999px; border: 1.5px solid var(--c); color: var(--c); font-weight: 700; font-size: 14px; }
+.vr-opt input:checked + span { background: var(--c); color: #fff; }
+.visit .vn { margin-top: 2px; } .visit .vn small { color: var(--soft); } .visit .vn em { font-style: normal; color: var(--soft); font-size: 12px; }
+/* 2. 작물재배 변동 사항 · 필지 */
+.chg-box { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.chg input { position: absolute; opacity: 0; pointer-events: none; }
+.chg span { display: inline-block; padding: 6px 11px; border-radius: 8px; border: 1.5px solid #e1b97a; color: #8a5300; font-size: 13.5px; font-weight: 700; background: #fffaf0; }
+.chg input:checked + span { background: #e8590c; border-color: #e8590c; color: #fff; }
+.chg-box.sm .chg span { padding: 3px 7px; font-size: 12px; }
+.jb-row { border-left: 3px solid #e8590c; padding: 4px 8px; margin: 6px 0; font-size: 13.5px; }
+.jb-mark { background: rgba(255,255,255,.92); border: 1.5px solid #e8590c; color: #8a3b00; border-radius: 5px; padding: 1px 5px; font-size: 11px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.jb-mark.chg { background: #e8590c; color: #fff; }
+.prod-link { margin: 6px 0; font-size: 13.5px; }
+.chip.prod { border: 1.5px solid #0ca678; background: #e6fcf5; color: #087f5b; font-weight: 700; padding: 3px 9px; cursor: pointer; }
+/* 17. 연락처 */
+.ct-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border: 1px dashed #cfd6d3; border-radius: 10px; padding: 8px; margin: 6px 0; }
+.ct-row label span { display: block; font-size: 12px; color: var(--soft); margin-bottom: 2px; }
+.ct-row .inp { padding: 7px; font-size: 15px; }
+.ct-row .ct-del { grid-column: 1 / -1; justify-self: end; }
+.ct-card { background: #f6f8f7; border-radius: 10px; padding: 7px 10px; margin: 5px 0; font-size: 14px; }
+.ct-card .ct-tels { margin-top: 2px; } .ct-card a { color: #1971c2; font-weight: 700; text-decoration: none; }
+/* 18·19. 답례품·수첩·달력 */
+.gift-box { margin-top: 6px; }
+.gm { border: 1.5px solid var(--line); border-radius: 8px; padding: 2px 6px; font: inherit; font-size: 13px; }
+.gift-row { display: grid; grid-template-columns: 82px 1fr 78px 1fr; gap: 5px; align-items: center; margin: 5px 0; }
+.gift-row .inp.sm { padding: 6px; font-size: 13.5px; min-width: 0; }
+.gchk { display: flex; align-items: center; gap: 4px; font-size: 14px; }
+.gchk input { width: 18px; height: 18px; }
+@media (max-width: 380px) { .gift-row { grid-template-columns: 76px 1fr 1fr; } .gift-row [data-g=receiver] { grid-column: 2 / -1; } }
+.gift-flt { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.gift-flt .inp { padding: 7px; font-size: 14px; }
+.gift-sum { margin: 10px 0 6px; font-size: 14px; background: #f1f8f5; border-radius: 8px; padding: 7px 10px; }
+.gift-tb { width: 100%; border-collapse: collapse; font-size: 13px; margin: 4px 0 8px; }
+.gift-tb th { text-align: left; color: var(--soft); font-weight: 600; border-bottom: 1px solid var(--line); padding: 4px; }
+.gift-tb td { border-bottom: 1px solid #eef1ef; padding: 5px 4px; vertical-align: top; }
+.gift-tb td small { display: block; color: var(--soft); font-size: 11px; }
+.gift-tb td.ok { color: #2b8a3e; font-weight: 700; } .gift-tb td.no { color: #adb5bd; }
+.gift-tb tr { cursor: pointer; } .gift-tb tr.sel td { background: #eef6ff; }
