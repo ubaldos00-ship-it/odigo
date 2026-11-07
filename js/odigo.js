@@ -1,4 +1,5 @@
 /* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4) · v2.8: 나 조사하러 간다(safety.js) 연결·안전 연락 설정·공유 위치 링크 열기
+   · v3.7: 핀 글자 텐아르 방식 — 핀 위 조사명(남색), 핀 아래 조사별 정보(갈색): 작물재배=읍면동 층-조사구, 가축=축종·이름·농장·읍면동 등. 가축·축비에 축종·농장명 칸
    · v3.6: 확대·축소 버튼 왼쪽 아래 + 확대 단계 표시, 핀 제목 항상 표시(레이어에서 켜고 끄기), 작물재배는 읍면동별 색(텐아르와 같은 색), 검색창 아래 KAKAO·NAVER 빠른 버튼
    · v3.5: 텐아르 방식 핀 — 기본 동그라미(좌표 가운데에 놓여 가까운 핀은 겹쳐 보임), 이름표는 상자 없이 테두리 글자
    · v3.4: 조사구 삭제(전체·업무별·선택), 텐아르 파일 가져오기 버튼을 ⓘ에 바로
@@ -16,7 +17,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v3.6';
+  var APP_VERSION = 'v3.7';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -65,13 +66,39 @@
   }
   function labelFieldsOf(divId, typeId) { var L = (db.profile && db.profile.pinLabel) || {}; var pl = L[styleKey(divId, typeId)]; return Array.isArray(pl) ? pl : DEFAULT_LABEL; }
   function floorCard(s) { return [s.floor, s.card].filter(function (x) { return x != null && String(x).trim() !== ''; }).join('-'); }
-  function labelText(s) {
-    return labelFieldsOf(s.division, s.type).map(function (f) {
-      if (f === 'type') { var t = typeOf(s.division, s.type); return t ? t.name : ''; }
-      if (f === 'floorCard') return floorCard(s);
-      if (f === 'addr') return (s.addr || '').replace(/^(\S+\s+){1,2}/, '');   /* 시도·시군구는 줄여 표시 */
-      return s[f] || '';
-    }).filter(Boolean).join(' · ');
+  /* v3.7 핀 글자 (텐아르 방식): 위 = 조사명, 아래 = 조사별 정보 (사용자 지정 2026-11-07) */
+  var TOP_ALIAS = { 'agri/area': '작물재배' };
+  function pad0(v, n) { v = String(v == null ? '' : v).trim(); return /^\d+$/.test(v) ? ('0000' + v).slice(-Math.max(n, v.length)) : v; }
+  function emdOf(s) {
+    if (s.region && s.region.emd) return s.region.emd;
+    var m = String(s.addr || '').match(/(\S+(?:읍|면|동|가))(?=\s|$)/); return m ? m[1] : '';
+  }
+  function memoPick(s, key) { var m = String(s.memo || '').match(new RegExp(key + '\\s+([^/]+)')); return m ? m[1].trim() : ''; }
+  function speciesOf(s) { return s.species || memoPick(s, '축종'); }
+  function farmOf(s) { return s.farmName || memoPick(s, '농장'); }
+  /* 생산량: 읍면동 리 번지 (주소에서 시도·시군구를 뺀 나머지) */
+  function addrTail(s) {
+    var a = String(s.addr || '').trim(), e = emdOf(s);
+    if (e && a.indexOf(e) >= 0) return a.slice(a.indexOf(e));
+    return a.replace(/^(\S+\s+){1,2}/, '');
+  }
+  function topText(s) {
+    if (!s.division) return '';
+    if (s.type === 'prod' && s.division === 'agri') return s.crop || '생산량';
+    var t = typeOf(s.division, s.type);
+    return TOP_ALIAS[s.division + '/' + s.type] || (t ? t.name : '');
+  }
+  function bottomText(s) {
+    var e = emdOf(s), nm = s.name || '';
+    var key = s.division + '/' + s.type;
+    if (key === 'agri/area') {
+      var fc = [s.floor ? pad0(s.floor, 2) : '', s.josaguNo ? pad0(s.josaguNo, 4) : ''].filter(Boolean).join('-');
+      return [e, fc].filter(Boolean).join(' ');
+    }
+    if (key === 'agri/prod') return addrTail(s) || e;
+    if (key === 'agri/livestock') return [speciesOf(s), nm, farmOf(s), e].filter(Boolean).join(' ');
+    if (key === 'agri/farmcost') return [s.kind, nm, e].filter(Boolean).join(' ');
+    return [nm, e].filter(Boolean).join(' ');   /* 축비·쌀값(정미소)·농가경제·양곡·농림어업 등 / 다른 과도 우선 이름 + 읍면동 */
   }
   function divOf(id) { for (var i = 0; i < DIVISIONS.length; i++) if (DIVISIONS[i].id === id) return DIVISIONS[i]; return null; }
   function typeOf(divId, typeId) { var d = divOf(divId); if (!d) return null; for (var i = 0; i < d.types.length; i++) if (d.types[i].id === typeId) return d.types[i]; return null; }
@@ -139,7 +166,7 @@
 
   function addSite(o) {
     var s = { id: uid(), name: o.name || '이름 없는 조사구', addr: o.addr || '', lat: +o.lat, lng: +o.lng, memo: o.memo || '',
-      josaguNo: o.josaguNo || '', floor: o.floor || '', card: o.card || '', kind: o.kind || '',
+      josaguNo: o.josaguNo || '', floor: o.floor || '', card: o.card || '', kind: o.kind || '', species: o.species || '', farmName: o.farmName || '',
       division: o.division || null, type: o.type || null, crop: o.crop || null, region: o.region || null, createdAt: nowIso(), updatedAt: nowIso() };
     db.sites.push(s); persist();
     if (!s.region || s.region.status !== 'ok' && s.region.status !== 'manual') fillRegion(s);
@@ -242,10 +269,11 @@
     seqCache = seqMap();
     visibleSites().forEach(function (s) {
       if (!isFinite(s.lat) || !isFinite(s.lng)) return;
-      var ord = todayOrderOf(s.id), el = document.createElement('div'), ps = pinStyleOf(s.division, s.type), lb = labelText(s);
+      var ord = todayOrderOf(s.id), el = document.createElement('div'), ps = pinStyleOf(s.division, s.type), tp = topText(s), lb = bottomText(s);
       el.className = 'pin-wrap w-' + ps.shape;
       el.innerHTML = '<div class="pin s-' + ps.shape + (ord ? ' today' : '') + (ord && visitedToday(s.id) ? ' visited' : '') + '" style="--pc:' + siteColor(s) + '"><i>' + (seqCache[s.id] || '') + '</i></div>' +
         (ord ? '<span class="pin-today">' + ord + '</span>' : '') +
+        (tp ? '<span class="pin-top">' + esc(tp) + '</span>' : '') +
         (lb ? '<span class="pin-label">' + esc(lb) + '</span>' : '');
       el.title = s.name + ' · ' + siteLabel(s);
       el.addEventListener('click', function (ev) { ev.stopPropagation(); openSite(s.id); });
@@ -333,14 +361,14 @@
     var dv = divOf(divSel || db.profile.division) || DIVISIONS[0];
     var rows = dv.types.map(function (t) { return [dv.id, t.id, t.name]; });
     if (!divSel || divSel === db.profile.division) rows.push([null, null, '미분류']);
-    var html = '<p class="muted">업무마다 핀의 모양·색과 핀 아래 이름표(지도 확대 15 이상에서 보임)에 보일 항목을 고릅니다.</p>' +
+    var html = '<p class="muted">업무마다 핀의 모양·색을 고릅니다. 핀 위·아래 글자는 조사별로 정해져 있습니다(예: 작물재배 → 위 「작물재배」, 아래 「논공읍 06-0022」). 레이어 › 「핀 제목」으로 켜고 끕니다.</p>' +
       '<label class="fld">과</label><select class="inp" id="psDiv">' + DIVISIONS.map(function (d) { return '<option value="' + d.id + '"' + (d.id === dv.id ? ' selected' : '') + '>' + esc(d.name) + (d.id === db.profile.division ? ' (내 과)' : '') + '</option>'; }).join('') + '</select>' +
       rows.map(function (r) {
         var ps = pinStyleOf(r[0], r[1]), lf = labelFieldsOf(r[0], r[1]), n = r[0] ? countBy(r[0], r[1]) : unassigned().length;
         return '<div class="ps-row" data-key="' + styleKey(r[0], r[1]) + '">' +
           '<div class="ps-head"><span class="ps-prev"><span class="pin-wrap demo"><span class="pin s-' + ps.shape + '" style="--pc:' + ps.color + '"><i>1</i></span></span></span><b>' + esc(r[2]) + ' <small class="muted">' + n + '곳</small></b>' +
           '<input type="color" data-k="color" value="' + ps.color + '"><select data-k="shape">' + SHAPES.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === ps.shape ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
-          '<div class="ps-lab">이름표: ' + LABEL_FIELDS.map(function (x) { return '<label><input type="checkbox" data-l="' + x[0] + '"' + (lf.indexOf(x[0]) >= 0 ? ' checked' : '') + '> ' + x[1] + '</label>'; }).join('') + '</div></div>';
+          '</div>';
       }).join('') +
       (dv.id === 'agri' ? emdColorHtml() : '') +
       '<div class="row"><button class="btn" id="psReset">이 과 기본값으로</button><button class="btn primary" id="psSave" style="flex:1">저장</button></div>';
@@ -364,7 +392,7 @@
       body.querySelectorAll('.ps-row').forEach(function (row) {
         var k = row.getAttribute('data-key');
         st[k] = { color: row.querySelector('[data-k=color]').value, shape: row.querySelector('[data-k=shape]').value };
-        lb[k] = Array.prototype.map.call(row.querySelectorAll('[data-l]:checked'), function (c) { return c.getAttribute('data-l'); });
+        delete lb[k];
       });
       db.profile.pinStyle = st; db.profile.pinLabel = lb; db.profile.updatedAt = nowIso();
       if (abe) {
@@ -666,7 +694,10 @@
   }
   function bindClassify(body) {
     var fd = body.querySelector('#fDiv'), ft = body.querySelector('#fType'), cw = body.querySelector('#fCropWrap');
-    function cropVis() { var t = typeOf(fd.value, ft.value); cw.hidden = !(t && t.crops); }
+    function cropVis() {
+      var t = typeOf(fd.value, ft.value); cw.hidden = !(t && t.crops);
+      var lw = body.querySelector('#fLiveW'); if (lw) lw.hidden = !(fd.value === 'agri' && (ft.value === 'livestock' || ft.value === 'livecost'));
+    }
     fd.addEventListener('change', function () {
       var d = divOf(fd.value);
       ft.innerHTML = d.types.map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + '</option>'; }).join('');
@@ -704,6 +735,10 @@
         '<label><span>카드</span><input class="inp" id="fCard" value="' + esc(s.card || '') + '" placeholder="예: 3"></label>' +
         '<label><span>구분</span><select class="inp" id="fKind"><option value="">선택 안 함</option>' + KINDS.map(function (k) { return '<option' + (s.kind === k ? ' selected' : '') + '>' + k + '</option>'; }).join('') + '</select></label>' +
       '</div>' +
+      '<div class="f-grid" id="fLiveW">' +
+        '<label><span>축종</span><input class="inp" id="fSpecies" value="' + esc(s.species || '') + '" placeholder="예: 한우, 돼지"></label>' +
+        '<label><span>농장명</span><input class="inp" id="fFarm" value="' + esc(s.farmName || '') + '" placeholder="예: 행복농장"></label>' +
+      '</div>' +
       '<div class="addr">' + esc((s.addr || o.addr) || ((s.lat || o.lat).toFixed(5) + ', ' + (s.lng || o.lng).toFixed(5))) + '</div>' +
       (existing ? '<label class="fld">지역 (법정동)</label><div class="reg-line">' + regionText(s) + ' <button class="btn sm" id="fReg">다시 확인</button></div>' : '<p class="muted">지역(시도·시군구·읍면동·리)은 저장할 때 법정동 기준으로 자동 확인합니다.</p>') +
       '<label class="fld">메모</label><textarea id="fMemo" placeholder="조사 대상 개인정보 없이 현장 메모만 (이 기기에 암호화 저장)">' + esc(s.memo || '') + '</textarea>' +
@@ -713,7 +748,7 @@
     var rb = body.querySelector('#fReg'); if (rb) rb.addEventListener('click', function () { fillRegion(s, true).then(function () { openSiteForm(o, s); }); });
     body.querySelector('#fSave').addEventListener('click', function () {
       var v = get(), name = body.querySelector('#fName').value.trim(), memo = body.querySelector('#fMemo').value;
-      var more = { josaguNo: body.querySelector('#fNo').value.trim(), floor: body.querySelector('#fFloor').value.trim(), card: body.querySelector('#fCard').value.trim(), kind: body.querySelector('#fKind').value };
+      var more = { species: body.querySelector('#fSpecies').value.trim(), farmName: body.querySelector('#fFarm').value.trim(), josaguNo: body.querySelector('#fNo').value.trim(), floor: body.querySelector('#fFloor').value.trim(), card: body.querySelector('#fCard').value.trim(), kind: body.querySelector('#fKind').value };
       lastPick[v.division] = { type: v.type, crop: v.crop };
       if (existing) {
         s.division = v.division; s.type = v.type; s.crop = v.crop; s.name = name || s.name; s.memo = memo; Object.assign(s, more); touch(s);
@@ -1364,7 +1399,7 @@
         var now = nowIso();
         items.forEach(function (x) {
           db.sites.push({ id: uid(), name: x.name || '이름 없는 조사구', addr: x.addr || '', lat: +x.lat, lng: +x.lng, memo: x.memo || '',
-            josaguNo: x.josaguNo || '', floor: x.floor || '', card: x.card || '', kind: x.kind || '',
+            josaguNo: x.josaguNo || '', floor: x.floor || '', card: x.card || '', kind: x.kind || '', species: x.species || '', farmName: x.farmName || '',
             division: x.division || null, type: x.type || null, crop: x.crop || null, region: x.region || null, createdAt: now, updatedAt: now });
         });
         persist(); refillRegions(false);
@@ -1373,7 +1408,8 @@
     setSafety: function (o) { if (!db.profile) return; db.profile.safety = Object.assign({}, db.profile.safety || {}, o); db.profile.updatedAt = nowIso(); persist(); },
     pinsForAlt: function () {
       return visibleSites().filter(function (s) { return isFinite(s.lat) && isFinite(s.lng); }).map(function (s) {
-        return { id: s.id, name: s.name, lat: s.lat, lng: s.lng, order: todayOrderOf(s.id), sel: s.id === selectedId };
+        return { id: s.id, name: s.name, lat: s.lat, lng: s.lng, order: todayOrderOf(s.id), sel: s.id === selectedId,
+          top: topText(s), bottom: bottomText(s), color: siteColor(s), seq: seqCache[s.id] || '', titles: document.body.classList.contains('pin-labels') };
       });
     } };
 

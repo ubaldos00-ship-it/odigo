@@ -158,7 +158,7 @@
     }).then(function (ok) { if (!ok) xP = null; return ok; });
     return xP;
   }
-  var HEAD = ['업무분야', '조사유형', '작물', '조사구명', '조사구번호', '층', '카드', '구분', '시도', '시군구', '읍면동', '리', '본지번', '부지번', '주소', '위도', '경도', '메모'];
+  var HEAD = ['업무분야', '조사유형', '작물', '조사구명', '조사구번호', '층', '카드', '구분', '축종', '농장명', '시도', '시군구', '읍면동', '리', '본지번', '부지번', '주소', '위도', '경도', '메모'];
   /* 열 이름 → 항목 (텐아르 조사구 양식 이름 포함) */
   var ALIAS = {
     division: ['업무분야', '분야', '업무', '과'],
@@ -166,7 +166,7 @@
     crop: ['작물', '작물명', '품목'],
     name: ['조사구명', '조사구 이름', '조사구이름', '이름', '장소명', '명칭', '상호', '대상'],
     josaguNo: ['조사구번호', '조사구 번호', '조사구'],
-    floor: ['층'], card: ['카드'], kind: ['구분', '지목'],
+    floor: ['층'], card: ['카드'], kind: ['구분', '지목'], species: ['축종'], farmName: ['농장명', '농장', '농장이름'],
     sido: ['시도'], sigungu: ['시군구'], emd: ['읍면동'], ri: ['리', '동리'],
     bon: ['본지번', '본번'], bu: ['부지번', '부번'],
     addr: ['주소', '초입주소', '소재지', '지번주소', '도로명주소'],
@@ -191,9 +191,9 @@
       var T = D();
       var wb = XLSX.utils.book_new();
       var ex = [HEAD,
-        ['농어업과', '생산량', '양파', '다산 101 조사구', '101', '2', '3', '밭', '경상북도', '고령군', '다산면', '호촌리', '123', '4', '', '', '', '대문 왼쪽 창고'],
-        ['농어업과', '재배면적', '', '대가야 7', '7', '', '', '논', '', '', '', '', '', '', '경북 고령군 대가야읍 지산리 188-1', '', '', ''],
-        ['경제과', '물가', '', '고령시장 1', '', '', '', '응답자집', '', '', '', '', '', '', '', '35.72720', '128.26310', '']];
+        ['농어업과', '생산량', '양파', '다산 101 조사구', '101', '2', '3', '밭', '', '', '경상북도', '고령군', '다산면', '호촌리', '123', '4', '', '', '', '대문 왼쪽 창고'],
+        ['농어업과', '재배면적', '', '대가야 7', '7', '', '', '논', '', '', '', '', '', '', '', '', '경북 고령군 대가야읍 지산리 188-1', '', '', ''],
+        ['경제과', '물가', '', '고령시장 1', '', '', '', '응답자집', '', '', '', '', '', '', '', '', '', '35.72720', '128.26310', '']];
       var ws = XLSX.utils.aoa_to_sheet(ex);
       ws['!cols'] = HEAD.map(function (h) { return { wch: h === '주소' ? 34 : h === '조사구명' || h === '메모' ? 18 : 10 }; });
       XLSX.utils.book_append_sheet(wb, ws, '조사구');
@@ -271,7 +271,7 @@
       var name = cell(r, m, 'name') || [tp.name, no ? no : '', !no ? addr.split(' ').slice(-2).join(' ') : ''].filter(Boolean).join(' ');
       var kind = cell(r, m, 'kind');
       var memo = [cell(r, m, 'memo'), cell(r, m, 'note')].filter(Boolean).join(' / ');
-      return { row: hi + idx + 2, division: dv.id, type: tp.id, crop: crop, name: name, josaguNo: no, floor: stripNum(cell(r, m, 'floor')), card: stripNum(cell(r, m, 'card')),
+      return { row: hi + idx + 2, division: dv.id, type: tp.id, crop: crop, name: name, species: cell(r, m, 'species'), farmName: cell(r, m, 'farmName'), josaguNo: no, floor: stripNum(cell(r, m, 'floor')), card: stripNum(cell(r, m, 'card')),
         kind: T.KINDS.indexOf(kind) >= 0 ? kind : (kind ? '기타' : ''), addr: addr, memo: memo,
         lat: okLL ? lat : null, lng: okLL ? lng : null,
         region: sido && sgg && emd ? { basis: 'file', sido: sido, sigungu: sgg, emd: emd, ri: ri, status: 'ok', at: new Date().toISOString() } : null,
@@ -399,12 +399,12 @@
     var no = String(r.josagu || '').replace(/^0+(?=\d)/, ''), fl = String(r.floor || '').replace(/^0+(?=\d)/, '');
     var kind = String(r.kind || '').trim(), memoParts = [];
     var kindOk = T.KINDS.indexOf(kind) >= 0;
-    if (kind && !kindOk) memoParts.push((cfg.kindLabel || '구분') + ' ' + kind);
-    if (r.farmName) memoParts.push('농장 ' + r.farmName);
+    var species = cfg.kindLabel === '축종' ? kind : '';   /* v3.7: 축종·농장명은 따로 저장(핀 아래 글자) */
+    if (kind && !kindOk && !species) memoParts.push((cfg.kindLabel || '구분') + ' ' + kind);
     if (r.note) memoParts.push(r.note);
     if (r.memo) memoParts.push(r.memo);
     var name = cfg.type === 'area' ? ['작물재배', no ? no + '조사구' : '', r.number ? '#' + r.number : ''].filter(Boolean).join(' ') : (r.name || cfg.label + (r.number ? ' ' + r.number : ''));
-    return Object.assign(base, { name: name, addr: r.address1 || '', memo: memoParts.join(' / '), crop: null, josaguNo: no, floor: fl, card: '', kind: kindOk ? kind : '',
+    return Object.assign(base, { name: name, addr: r.address1 || '', memo: memoParts.join(' / '), crop: null, josaguNo: no, floor: fl, card: '', kind: kindOk && !species ? kind : '', species: species, farmName: r.farmName || '',
       region: r.sido && r.sigungu && r.eupmyeondong ? { basis: 'tenar', sido: r.sido, sigungu: r.sigungu, emd: r.eupmyeondong, ri: '', status: 'ok', at: now } : null });
   }
   function openTenarImport() {

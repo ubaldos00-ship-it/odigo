@@ -1,4 +1,4 @@
-/* 어디고 v2.4 — 「레이어」 패널 (v2.5: 네이버 지도 키 교체 · v2.6: 기본값 항공영상+하이브리드, 교통상황(ITS) 버튼 · v3.6: 내 조사구 핀(제목 켜고 끄기·핀 모양 설정), 빠른 KAKAO·NAVER(교통정보 켜서 열기)) (설계: 설계/v2.4/어디고맵_통합시나리오_설계_v2.4.md 6장)
+/* 어디고 v2.4 — 「레이어」 패널 (v2.5: 네이버 지도 키 교체 · v2.6: 기본값 항공영상+하이브리드, 교통상황(ITS) 버튼 · v3.6: 내 조사구 핀(제목 켜고 끄기·핀 모양 설정), 빠른 KAKAO·NAVER(교통정보 켜서 열기) · v3.7: 대체 지도 핀 글자 위·아래, 현재 위치 버튼) (설계: 설계/v2.4/어디고맵_통합시나리오_설계_v2.4.md 6장)
    · 지도 종류: 일반지도·항공영상(MapLibre 배경 전환) + 카카오·네이버(공식 SDK 대체 화면)
    · 중첩: 브이월드 데이터 API(JSONP → GeoJSON 벡터) — 텐아르 map_libre.html v195 OVERLAY_DEFS와 같은 자료·확대 기준
      (브이월드 WMS는 CORS 헤더가 없어 MapLibre 타일로 못 받음 → 텐아르와 같이 데이터 API 사용)
@@ -529,9 +529,13 @@
     return naverP;
   }
   function altPins() { return (A().pinsForAlt && A().pinsForAlt()) || []; }
+  /* v3.7: 어디고 지도와 같은 핀 — 동그라미(가운데가 좌표) + 위 조사명(남색) + 아래 조사별 정보(갈색) */
   function pinHtml(p) {
-    return '<div class="alt-pin' + (p.order ? ' today' : '') + (p.sel ? ' sel' : '') + '" title="' + esc(p.name) + '">' +
-      '<b>' + (p.order || '') + '</b><span>' + esc(p.name) + '</span></div>';
+    return '<div class="ap' + (p.order ? ' today' : '') + (p.sel ? ' sel' : '') + '" title="' + esc(p.name) + '">' +
+      (p.titles && p.top ? '<span class="ap-top">' + esc(p.top) + '</span>' : '') +
+      '<span class="ap-dot" style="background:' + (p.color || '#f07a22') + '">' + esc(p.seq || '') + '</span>' +
+      (p.order ? '<span class="ap-today">' + p.order + '</span>' : '') +
+      (p.titles && p.bottom ? '<span class="ap-bot">' + esc(p.bottom) + '</span>' : '') + '</div>';
   }
   function openAlt(kind, opt) {
     altOpt = opt || {};
@@ -612,11 +616,11 @@
     clearAltObjs();
     altPins().forEach(function (p) {
       if (alt.kind === 'kakao') {
-        var ov = new kakao.maps.CustomOverlay({ position: new kakao.maps.LatLng(p.lat, p.lng), content: pinHtml(p), yAnchor: 1, zIndex: p.order ? 3 : 2 });
+        var ov = new kakao.maps.CustomOverlay({ position: new kakao.maps.LatLng(p.lat, p.lng), content: pinHtml(p), xAnchor: 0.5, yAnchor: 0.5, zIndex: p.order ? 3 : 2 });
         ov.setMap(alt.kmap); alt.objs.push(ov);
       } else {
         alt.objs.push(new naver.maps.Marker({ position: new naver.maps.LatLng(p.lat, p.lng), map: alt.nmap, zIndex: p.order ? 3 : 2,
-          icon: { content: '<div style="transform:translate(-50%,-100%)">' + pinHtml(p) + '</div>' } }));
+          icon: { content: '<div style="transform:translate(-50%,-50%)">' + pinHtml(p) + '</div>' } }));
       }
     });
     var sel = altPins().filter(function (p) { return p.sel; })[0];
@@ -626,6 +630,7 @@
     try { updateMe2(lat, lng, acc); } catch (e) {}
   }
   function updateMe2(lat, lng, acc) {
+    alt.meLL = [lat, lng, acc];
     if (alt.kind === 'kakao' && alt.kmap) {
       var ll = new kakao.maps.LatLng(lat, lng);
       if (!alt.me) { alt.me = new kakao.maps.CustomOverlay({ position: ll, content: '<div class="me-dot"></div>', zIndex: 5 }); alt.me.setMap(alt.kmap); }
@@ -674,6 +679,19 @@
     $('lpFold').addEventListener('click', function () { setCollapsed(!st.collapsed); });
     $('lpReset').addEventListener('click', resetAll);
     $('altClose').addEventListener('click', function () { closeAlt(false); });
+    /* v3.7: 카카오·네이버 지도 「현재 위치」 — 내 위치로 지도 이동 */
+    $('altMe').addEventListener('click', function () {
+      function go(lat, lng, acc) {
+        updateMe(lat, lng, acc);
+        if (alt.kind === 'kakao' && alt.kmap) { alt.kmap.setLevel(Math.min(alt.kmap.getLevel(), 3)); alt.kmap.panTo(new kakao.maps.LatLng(lat, lng)); }
+        if (alt.kind === 'naver' && alt.nmap) { if (alt.nmap.getZoom() < 17) alt.nmap.setZoom(17); alt.nmap.panTo(new naver.maps.LatLng(lat, lng)); }
+      }
+      if (alt.meLL) { go(alt.meLL[0], alt.meLL[1], alt.meLL[2]); return; }
+      if (!navigator.geolocation) { A().toast('이 기기에서는 위치를 확인할 수 없습니다'); return; }
+      A().toast('현재 위치를 찾는 중…');
+      navigator.geolocation.getCurrentPosition(function (q) { go(q.coords.latitude, q.coords.longitude, q.coords.accuracy); },
+        function (e) { A().toast(e && e.code === 1 ? '위치 권한이 꺼져 있습니다' : '현재 위치를 찾지 못했습니다'); }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+    });
     /* 토지정보: 주변정보 아이콘·내 장소 핀을 누른 경우는 제외 */
     m.on('click', function (e) {
       if (!on('landinfo')) return;
