@@ -1,4 +1,5 @@
 /* 어디고 v2.7 — 지도·조사구·방문 (통합 2단계, 설계: 설계/v2.4) · v2.8: 나 조사하러 간다(safety.js) 연결·안전 연락 설정·공유 위치 링크 열기
+   · v3.4: 조사구 삭제(전체·업무별·선택), 텐아르 파일 가져오기 버튼을 ⓘ에 바로
    · v3.2: 텐아르 내보내기 파일로도 가져오기(홈 화면 앱은 저장소가 따로)
    · v3.1: 텐아르 핀 가져오기(files.js), 가져온 자료는 이름이 같으면 최신으로 갱신
    · v3.0: 핀 모양·색·이름표를 업무(조사 유형)별로, 업무별 자료 공유·엑셀 올리기(files.js) 연결
@@ -13,7 +14,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v3.3';
+  var APP_VERSION = 'v3.4';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -533,7 +534,8 @@
     html += filterBar(o);
     html += list.length ? treeHtml(list) : '<p class="muted">이 조건의 조사구가 없습니다. 지도를 길게 누르거나 검색해서 조사구를 등록하세요.</p>';
     html += '<div class="row"><button class="btn" id="lsMap" style="flex:1">이 목록 지도에서 보기 (' + list.length + ')</button><button class="btn" id="lsHome">현황</button></div>' +
-      '<div class="row"><button class="btn" id="lsShare" style="flex:1">📤 이 업무 자료 공유</button><button class="btn" id="lsXls" style="flex:1">📥 엑셀로 올리기</button></div>';
+      '<div class="row"><button class="btn" id="lsShare" style="flex:1">📤 이 업무 자료 공유</button><button class="btn" id="lsXls" style="flex:1">📥 엑셀로 올리기</button></div>' +
+      '<div class="row"><button class="btn danger" id="lsDel" style="flex:1">🗑 이 업무 삭제</button><button class="btn danger" id="lsDelPick" style="flex:1">🗑 골라서 삭제</button></div>';
     var title = d.name + (t ? ' › ' + t.name : '') + (o.crop ? ' › ' + o.crop : '');
     var body = openSheet(title, html);
     body.querySelectorAll('[data-t]').forEach(function (b) {
@@ -556,6 +558,8 @@
     body.querySelector('#lsMap').addEventListener('click', function () { showOnMap(o); });
     body.querySelector('#lsHome').addEventListener('click', function () { openHome(d.id); });
     body.querySelector('#lsShare').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openExport({ div: d.id, type: o.type, crop: o.crop }); });
+    body.querySelector('#lsDel').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openDelete({ div: d.id, type: o.type, crop: o.crop }); });
+    body.querySelector('#lsDelPick').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openDelete({ div: d.id, type: o.type, crop: o.crop, pick: true }); });
     body.querySelector('#lsXls').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openExcel({ div: d.id, type: o.type, crop: o.crop }); });
     var rr = body.querySelector('#reRegion'); if (rr) rr.addEventListener('click', function () { refillRegions(true); toast('지역을 다시 확인합니다'); });
   }
@@ -1157,7 +1161,10 @@
       '<div class="row"><button class="btn" id="goShare" style="flex:1">📤 업무별 자료 공유</button><label class="btn" style="flex:1;text-align:center">📂 자료 파일 가져오기<input id="bkLoad" type="file" accept="application/json,.json,.odigo" hidden></label></div>' +
       '<div class="row"><button class="btn" id="bkSave" style="flex:1">💾 전체 백업 저장</button></div>' +
       '<label class="fld">텐아르</label>' +
-      '<div class="row"><button class="btn" id="goTenar" style="flex:1">📍 텐아르 핀 가져오기 (이 기기·파일)</button></div>' +
+      '<div class="row"><button class="btn" id="goTenarFile" style="flex:1">📂 텐아르 파일 가져오기 (앱→앱)</button><button class="btn" id="goTenar" style="flex:1">📍 이 브라우저의 텐아르 핀</button></div>' +
+      '<p class="muted">텐아르 앱 › 조사구목록 「🗄 전체 백업」·「📤 전체 공유」 또는 즐겨찾기 「공유」로 만든 파일을 고르고, 텐아르에서 정한 암호를 넣으세요.</p>' +
+      '<label class="fld">삭제</label>' +
+      '<div class="row"><button class="btn danger" id="goDel" style="flex:1">🗑 조사구 삭제 (전체·업무별·선택)</button></div>' +
       '<label class="fld">엑셀</label>' +
       '<div class="row"><button class="btn" id="goXls" style="flex:1">📥 엑셀로 조사구 올리기</button><button class="btn" id="goTpl" style="flex:1">📄 엑셀 양식 받기</button></div>' +
       '<p class="muted">백업 파일 암호는 모든 어디고 사용자가 같은 <b>' + (window.OdigoStore ? OdigoStore.FILE_PASSWORD : '2026') + '</b>입니다. 파일을 받은 사람은 누구나 열 수 있으니 받을 사람만 있는 곳에 보내 주세요. 예전(v2.3) 백업 파일도 불러올 수 있습니다.</p>' +
@@ -1174,6 +1181,8 @@
     body.querySelector('#goShare').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openExport({ div: db.profile && db.profile.division }); });
     body.querySelector('#goXls').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openExcel({ div: db.profile && db.profile.division }); });
     body.querySelector('#goTenar').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openTenarImport(); });
+    body.querySelector('#goTenarFile').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openTenarFile(); });
+    body.querySelector('#goDel').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.openDelete({ div: '' }); });
     body.querySelector('#goTpl').addEventListener('click', function () { if (window.OdigoFiles) OdigoFiles.template(); });
     body.querySelector('#bkLoad').addEventListener('change', function (e) { var f = e.target.files && e.target.files[0]; if (f) importBackup(f); });
   });
@@ -1293,12 +1302,19 @@
   window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
     ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
     getProfile: function () { return db.profile; },
-    fitSites: fitSites, previewMerge: previewMerge,
+    fitSites: fitSites, previewMerge: previewMerge, exportBackup: function () { exportBackup(); },
     /* files.js(공유·엑셀)용 자료 창구 */
     data: {
       APP_VERSION: APP_VERSION, DIVISIONS: DIVISIONS, CROPS: CROPS, KINDS: KINDS, divOf: divOf, typeOf: typeOf,
       profile: function () { return db.profile; }, sites: function () { return db.sites; }, visits: function () { return db.visits; },
       filterSites: filterSites,
+      deleteMany: function (ids) {
+        var m = {}; ids.forEach(function (id) { m[id] = 1; });
+        db.sites = db.sites.filter(function (s) { return !m[s.id]; });
+        db.visits = db.visits.filter(function (v) { return !m[v.siteId]; });
+        if (selectedId && m[selectedId]) selectedId = null;
+        persist();
+      },
       addMany: function (items) {
         var now = nowIso();
         items.forEach(function (x) {

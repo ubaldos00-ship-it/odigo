@@ -1,4 +1,4 @@
-/* 어디고 v3.0 — 자료 파일 (v3.1: 텐아르 핀 가져오기 · v3.2: 텐아르 내보내기 파일로 가져오기 — 홈 화면 앱끼리는 저장소가 따로라서) (설계: 설계/v2.4 11장 + 2026-11-07 엑셀 업로드 요청)
+/* 어디고 v3.0 — 자료 파일 (v3.1: 텐아르 핀 가져오기 · v3.2: 텐아르 내보내기 파일로 가져오기 — 홈 화면 앱끼리는 저장소가 따로라서 · v3.4: 조사구 삭제 — 전체·업무별·선택) (설계: 설계/v2.4 11장 + 2026-11-07 엑셀 업로드 요청)
    · 업무별 공유 파일: 범위(업무 전체·조사 유형·작물·고른 조사구) → 건수 미리보기 → 암호화 파일(암호 2026)
      → 휴대폰 공유 메뉴(카톡·문자 등) / 지원 안 되면 파일 저장 + 공유 문구 복사
    · 가져오기는 odigo.js의 「자료 파일 가져오기」(미리보기 후 합치기)를 그대로 씀
@@ -20,9 +20,9 @@
   function safeName(s) { return String(s || '').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 40); }
 
   /* ───────── 범위 고르기 ───────── */
-  function scopeFields(o) {
-    var T = D(), d = T.divOf(o.div) || T.divOf((T.profile() || {}).division) || T.DIVISIONS[0];
-    return '<label class="fld">업무분야</label><select class="inp" id="xDiv">' + T.DIVISIONS.map(function (x) { return '<option value="' + x.id + '"' + (x.id === d.id ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select>' +
+  function scopeFields(o, allDiv) {
+    var T = D(), d = o.div === '' && allDiv ? null : (T.divOf(o.div) || T.divOf((T.profile() || {}).division) || T.DIVISIONS[0]);
+    return '<label class="fld">업무분야</label><select class="inp" id="xDiv">' + (allDiv ? '<option value=""' + (d ? '' : ' selected') + '>모든 업무 (전체)</option><option value="_none">미분류</option>' : '') + T.DIVISIONS.map(function (x) { return '<option value="' + x.id + '"' + (d && x.id === d.id ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select>' +
       '<label class="fld">조사 유형</label><select class="inp" id="xType"></select>' +
       '<div id="xCropW"><label class="fld">작물</label><select class="inp" id="xCrop"></select></div>';
   }
@@ -30,6 +30,8 @@
     var ready = false, T = D(), fd = body.querySelector('#xDiv'), ft = body.querySelector('#xType'), fc = body.querySelector('#xCrop'), cw = body.querySelector('#xCropW');
     function types() {
       var d = T.divOf(fd.value);
+      if (!d) { ft.innerHTML = '<option value="">' + (fd.value === '_none' ? '미분류 전체' : '업무 전체') + '</option>'; ft.disabled = true; cw.hidden = true; if (ready && onChange) onChange(); return; }
+      ft.disabled = false;
       ft.innerHTML = (allowAll ? '<option value="">업무 전체</option>' : '') + d.types.map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + '</option>'; }).join('');
       if (o.type && d.types.some(function (t) { return t.id === o.type; })) ft.value = o.type;
       crops();
@@ -50,10 +52,12 @@
     ready = true;
     return function () {
       var t = T.typeOf(fd.value, ft.value);
-      return { div: fd.value, type: ft.value || null, crop: t && t.crops && fc.value ? fc.value : null };
+      return { div: fd.value || null, type: ft.value || null, crop: t && t.crops && fc.value ? fc.value : null };
     };
   }
   function scopeTitle(sc) {
+    if (!sc.div) return '모든 업무';
+    if (sc.div === '_none') return '미분류';
     var T = D(), d = T.divOf(sc.div), t = T.typeOf(sc.div, sc.type);
     return (d ? d.name : '') + (t ? ' › ' + t.name : '') + (sc.crop ? ' › ' + sc.crop : '');
   }
@@ -500,5 +504,62 @@
     done(o);
   }
 
-  window.OdigoFiles = { openExport: openExport, openExcel: openExcel, template: templateFile, openTenarImport: openTenarImport };
+
+  /* ───────── 조사구 삭제 (전체·업무별·선택) ─────────
+     범위 → 건수 확인 → (먼저 백업 권장) → 「삭제」라고 입력해야 지움. 되돌릴 수 없음. 내 설정(닉네임·핀 설정)은 남김 */
+  function inDelScope(sc) {
+    var T = D();
+    if (!sc.div) return T.sites().slice();
+    if (sc.div === '_none') return T.sites().filter(function (s) { return !s.division; });
+    return T.filterSites({ div: sc.div, type: sc.type, crop: sc.crop });
+  }
+  function openDelete(o) {
+    var T = D();
+    o = o || {};
+    var body = A().openSheet('🗑 조사구 삭제',
+      '<p class="muted">전체, 업무별(분야·조사 유형·작물), 또는 하나씩 골라 지울 수 있습니다. 방문 기록도 함께 지워지고 <b>되돌릴 수 없습니다.</b> 내 설정(닉네임·핀 설정)은 남습니다.</p>' +
+      scopeFields(o, true) +
+      '<label class="chk-all"><input type="checkbox" id="xPick"' + (o.pick ? ' checked' : '') + '> 하나씩 골라서 지우기</label><div id="xList"></div>' +
+      '<div class="x-sum" id="xSum"></div>' +
+      '<div class="row"><button class="btn" id="dBk" style="flex:1">💾 먼저 전체 백업</button></div>' +
+      '<label class="fld">확인을 위해 <b>삭제</b> 라고 입력하세요</label><input class="inp" id="dTxt" autocomplete="off" placeholder="삭제">' +
+      '<div class="row"><button class="btn danger full" id="dGo" disabled>🗑 지우기</button></div>');
+    var pickEl = body.querySelector('#xPick'), listEl = body.querySelector('#xList'), sumEl = body.querySelector('#xSum'), txt = body.querySelector('#dTxt'), go = body.querySelector('#dGo');
+    var chosen = null;
+    var get = bindScope(body, o, true, refresh);
+    function picked() { var l = inDelScope(get()); return pickEl.checked ? l.filter(function (s) { return chosen && chosen[s.id]; }) : l; }
+    function refresh() {
+      var list = inDelScope(get());
+      if (pickEl.checked) {
+        if (!chosen) chosen = {};
+        listEl.innerHTML = list.length ? '<label class="chk-all"><input type="checkbox" id="dAll"> 모두 선택</label>' + list.map(function (s) {
+          return '<label class="un-row"><input type="checkbox" data-sid="' + s.id + '"' + (chosen[s.id] ? ' checked' : '') + '><span><b>' + esc(s.name) + '</b><small>' + esc([s.josaguNo ? '조사구 ' + s.josaguNo : '', s.addr].filter(Boolean).join(' · ')) + '</small></span></label>';
+        }).join('') : '<p class="muted">이 범위에 조사구가 없습니다.</p>';
+        listEl.querySelectorAll('[data-sid]').forEach(function (c) { c.addEventListener('change', function () { chosen[c.getAttribute('data-sid')] = c.checked; summary(); }); });
+        var all = listEl.querySelector('#dAll');
+        if (all) all.addEventListener('change', function () { listEl.querySelectorAll('[data-sid]').forEach(function (c) { c.checked = all.checked; chosen[c.getAttribute('data-sid')] = all.checked; }); summary(); });
+      } else listEl.innerHTML = '';
+      summary();
+    }
+    function summary() {
+      var p = picked(), ids = {}; p.forEach(function (s) { ids[s.id] = 1; });
+      var v = T.visits().filter(function (x) { return ids[x.siteId]; }).length;
+      sumEl.innerHTML = '지울 범위: <b>' + esc(scopeTitle(get())) + (pickEl.checked ? ' 중 고른 것' : '') + '</b> · 조사구 <b>' + p.length + '</b>곳 · 방문 기록 ' + v + '건';
+      check();
+    }
+    function check() { go.disabled = !(picked().length && txt.value.trim() === '삭제'); go.textContent = '🗑 ' + picked().length + '곳 지우기'; }
+    txt.addEventListener('input', check);
+    pickEl.addEventListener('change', function () { chosen = null; refresh(); });
+    body.querySelector('#dBk').addEventListener('click', function () { if (A().exportBackup) A().exportBackup(); });
+    go.addEventListener('click', function () {
+      var p = picked(); if (!p.length) return;
+      if (!window.confirm(p.length + '곳과 방문 기록을 지웁니다. 되돌릴 수 없습니다. 계속할까요?')) return;
+      T.deleteMany(p.map(function (s) { return s.id; }));
+      A().closeSheet();
+      A().toast(p.length + '곳을 지웠습니다');
+    });
+    refresh();
+  }
+
+  window.OdigoFiles = { openExport: openExport, openExcel: openExcel, template: templateFile, openTenarImport: openTenarImport, openDelete: openDelete, openTenarFile: function () { var i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json'; i.onchange = function () { var f = i.files && i.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { openTenarFile(String(rd.result)); }; rd.readAsText(f); }; i.click(); } };
 })();
