@@ -701,3 +701,9 @@ body.pin-labels .maplibregl-marker.pin-wrap .pin-label { display: block; }
 .plist-item .tap-hint { display: none; font-size: 12px; color: #1c7ed6; font-weight: 600; }
 .plist-item.sel .tap-hint { display: block; }
 a.btn.ext-link { text-decoration: none; text-align: center; display: block; }
+/* v4.2 경로 버튼 4개 */
+.nv-modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.nv-mode { padding: 7px 2px; }
+.nv-mode b { font-size: 13px; }
+.nv-mode i { font-style: normal; font-size: 10.5px; color: #495057; line-height: 1.1; }
+.nv-mode small { font-size: 11px; }

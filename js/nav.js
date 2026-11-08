@@ -1,4 +1,5 @@
-/* 어디고 v4.1 — 경로 고르기(고속도로 우선·최단거리·무료도로, Valhalla 공개 서버 · 실패하면 OSRM) + 음성 안내(휴대폰 내장 한국어 음성)
+/* 어디고 v4.2 — 경로 「추천(고속도로+최단)」 추가·기본값
+   어디고 v4.1 — 경로 고르기(고속도로 우선·최단거리·무료도로, Valhalla 공개 서버 · 실패하면 OSRM) + 음성 안내(휴대폰 내장 한국어 음성)
    어디고 v4.0 — 어디고 지도 안 길찾기 (사용자 요청 2026-11-09: 「네비게이션 보면서 전체 핀을 보고 싶다」)
    · 출발(현재 위치·지도에서 고르기·내 조사구) → 도착(조사구·지도에서 고르기·현재 위치) → 자동차 경로 선·거리·예상 시간·갈림길 안내
    · 경로 계산: OSRM 공개 경로 서버(router.project-osrm.org, 키 없음, OpenStreetMap 도로 기준)
@@ -10,6 +11,7 @@
   var OSRM = 'https://router.project-osrm.org/route/v1/driving/';
   var VALHALLA = 'https://valhalla1.openstreetmap.de/route';
   var MODES = [
+    { id: 'mix', name: '추천', sub: '고속도로+최단', opt: { use_highways: 1, use_distance: 0.7 } },   /* v4.2: 고속도로 우선 + 거리 비중 0.7 */
     { id: 'hw', name: '고속도로 우선', opt: { use_highways: 1, use_tolls: 1 } },
     { id: 'short', name: '최단거리', opt: { shortest: true } },
     { id: 'free', name: '무료도로', opt: { use_tolls: 0, use_highways: 0.5 } }
@@ -24,7 +26,7 @@
   function fmtT(s) { var m = Math.round(s / 60); return m < 60 ? m + '분' : Math.floor(m / 60) + '시간 ' + (m % 60) + '분'; }
 
   var st = { start: null, end: null, route: null, steps: [], idx: 0, guiding: false, watch: null, lastReroute: 0, markers: [],
-    mode: lsGet('odigo_navMode', 'hw'), alt: {}, voice: lsGet('odigo_navVoice', '1') === '1', said: {} };
+    mode: lsGet('odigo_navMode2', 'mix'), alt: {}, voice: lsGet('odigo_navVoice', '1') === '1', said: {} };
   function modeOf(id) { return MODES.filter(function (m) { return m.id === id; })[0] || MODES[0]; }
 
   /* ───── 음성 안내 (Web Speech · 한국어) ───── */
@@ -104,7 +106,7 @@
       '<div class="row" style="margin-top:0"><button class="btn sm" data-p="end:site">내 조사구</button><button class="btn sm" data-p="end:map">지도에서</button><button class="btn sm" data-p="end:cur">◎ 현재 위치</button></div>' +
       '<label class="fld">경로 고르기</label><div class="nv-modes">' + MODES.map(function (m) {
         var a = st.alt[m.id];
-        return '<button type="button" class="nv-mode' + (st.mode === m.id ? ' on' : '') + '" data-mode="' + m.id + '"><b>' + m.name + '</b><small>' + (a ? fmtD(a.distance) + ' · ' + fmtT(a.duration) : (st.start && st.end ? '…' : '')) + '</small></button>';
+        return '<button type="button" class="nv-mode' + (st.mode === m.id ? ' on' : '') + '" data-mode="' + m.id + '"><b>' + m.name + '</b>' + (m.sub ? '<i>' + m.sub + '</i>' : '') + '<small>' + (a ? fmtD(a.distance) + ' · ' + fmtT(a.duration) : (st.start && st.end ? '…' : '')) + '</small></button>';
       }).join('') + '</div>' +
       '<div class="row"><button class="btn primary" id="nvGo" style="flex:1"' + (st.start && st.end ? '' : ' disabled') + '>🧭 경로 보기</button>' + (st.route ? '<button class="btn" id="nvClear">경로 지우기</button>' : '') + '</div>' +
       '<div id="nvOut">' + (st.route ? summaryHtml() : '') + '</div>' +
@@ -121,7 +123,7 @@
     });
     body.querySelectorAll('[data-mode]').forEach(function (b) {
       b.addEventListener('click', function () {
-        st.mode = b.getAttribute('data-mode'); lsSet('odigo_navMode', st.mode);
+        st.mode = b.getAttribute('data-mode'); lsSet('odigo_navMode2', st.mode);
         if (st.alt[st.mode]) { useRoute(st.alt[st.mode]); open(); }
         else if (st.start && st.end) go(); else open();
       });

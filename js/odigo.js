@@ -26,7 +26,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v4.1';
+  var APP_VERSION = 'v4.2';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
