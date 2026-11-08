@@ -26,7 +26,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v4.0';
+  var APP_VERSION = 'v4.1';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -765,7 +765,8 @@
     return { root: root, none: none };
   }
   /* v3.8 목록 행: 동그라미 = #번호, 제목, 리동 주소, 메모, 수정·삭제 (텐아르 목록처럼) */
-  function siteRow(s) {
+  function siteRow(s, opt) {
+    opt = opt || {};
     var ord = todayOrderOf(s.id), n = noOf(s);
     var sub = addrTail(s) || s.addr || '';
     var extra = s.division === 'agri' && s.type === 'area' ? '' : [s.species, s.farmName, s.kind].filter(Boolean).join(' ');
@@ -775,8 +776,8 @@
       '<span class="t"><b>' + esc(nm || dispName(s)) + (mm ? ' <span class="chip memo" title="메모 있음">📝</span>' : '') + (ord ? ' <span class="chip today">오늘 ' + ord + '</span>' : '') + (visitedToday(s.id) ? ' <span class="chip done">방문</span>' : '') +
         (rr ? ' <span class="chip vr" style="--c:' + rr[2] + '">' + rr[1] + '</span>' : '') + '</b>' +
       '<span>' + esc(sub) + (extra ? ' · ' + esc(extra) : '') + ((s.changes || []).length ? ' · <em class="chg-t">' + esc(s.changes.join(',')) + '</em>' : '') + '</span>' +
-      (s.memo ? '<span class="row-memo">📝 ' + esc(s.memo.slice(0, 60)) + '</span>' : '') + '</span>' +
-      '<span class="row-acts"><button type="button" class="ra" data-edit="' + s.id + '">수정</button><button type="button" class="ra del" data-del="' + s.id + '">삭제</button></span></div>';
+      (s.memo ? '<span class="row-memo">📝 ' + esc(s.memo.slice(0, 60)) + '</span>' : '') + '<span class="tap-hint">한 번 더 누르면 상세 정보</span></span>' +
+      (opt.noActs ? '' : '<span class="row-acts"><button type="button" class="ra" data-edit="' + s.id + '">수정</button><button type="button" class="ra del" data-del="' + s.id + '">삭제</button></span>') + '</div>';
   }
   function treeHtml(list, openAll) {
     var t = buildTree(list), h = '';
@@ -931,7 +932,8 @@
       b.addEventListener('click', function (e) {
         if (e.target.closest('.row-acts')) return;
         var s = findSite(b.getAttribute('data-id')); if (!s) return;
-        /* v3.9: 목록에서는 카드를 열지 않고 위치만 이동(목록 유지) · 핀을 누르면 카드 */
+        /* v4.1: 한 번 누르면 위치만 이동(목록 유지) · 같은 줄을 한 번 더 누르면 상세 정보(카드) · 핀을 눌러도 카드 */
+        if (b.classList.contains('sel')) { openSite(s.id); return; }
         body.querySelectorAll('.plist-item.sel').forEach(function (x) { x.classList.remove('sel'); });
         b.classList.add('sel');
         if (!markers[s.id] && (activeDiv || mapFilter)) { activeDiv = null; mapFilter = null; renderMarkers(); renderDivBtns(); }
@@ -980,7 +982,7 @@
     var tl = todayPlanned();
     var html = '<div class="tabs"><button class="tab on">오늘 방문 (' + tl.length + ')</button><button class="tab" data-tab="all">내 조사 장소 (' + db.sites.length + ')</button></div>';
     if (!tl.length) html += '<p class="muted">오늘 방문할 조사구가 없습니다. 조사구 카드에서 「＋ 오늘 방문에 추가」를 누르세요.</p>';
-    else html += tl.map(function (v) { return siteRow(findSite(v.siteId)); }).join('');
+    else html += tl.map(function (v) { return siteRow(findSite(v.siteId), { noActs: true }); }).join('');
     if (tl.length > 1) html += '<div class="row"><button class="btn full" id="fitToday">오늘 방문 조사구 한눈에 보기</button></div>';
     var body = openSheet('오늘 방문', html);
     body.querySelector('[data-tab="all"]').addEventListener('click', openAllList);
@@ -1302,6 +1304,8 @@
         '<button class="btn" data-act="today">' + (ord ? '오늘 방문 빼기' : '＋ 오늘 방문에 추가') + '</button>' +
         '<button class="btn" data-act="visit">✔ 방문 기록(메모)</button>' +
       '</div>' +
+      (s.division === 'agri' && (s.type === 'livecost' || s.type === 'livestock') ? '<div class="row"><a class="btn full ext-link" href="https://ubaldos00-ship-it.github.io/dudang/" target="_blank" rel="noopener">🐄 두당 열기 (새 창)</a></div>' : '') +
+      (s.division === 'agri' && s.type === 'prod' ? '<div class="row"><a class="btn full ext-link" href="https://ubaldos00-ship-it.github.io/home/" target="_blank" rel="noopener">🌾 텐아르 열기 (새 창)</a></div>' : '') +
       '<div class="row"><button class="btn" style="flex:1" data-act="park">🅿 주변 주차장</button><button class="btn" style="flex:1" data-act="crime">🛡 이 지역 범죄 통계</button></div>' +
       '<div class="row"><button class="btn sf-go full" data-act="safe">🚨 이 핀 위치 보내기 (출장다녀오겠습니다)</button></div>' +
       (s.memo ? '<label class="fld">메모</label><div class="memo">' + esc(s.memo) + '</div>' : '') +
