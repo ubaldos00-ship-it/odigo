@@ -214,9 +214,11 @@
       return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
     });
   }
-  function exportFile(payload, scope, appVersion) {
+  /* v4.0: 암호는 사용자가 정함(pw). 비어 있으면 만들지 않음 — 공통 암호 2026은 예전 파일 열기용으로만 남김 */
+  function exportFile(payload, scope, appVersion, pw) {
+    if (!pw || String(pw).length < 4) return Promise.reject(err('nopw'));
     var salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12)), iter = 210000;
-    return deriveFileKey(FILE_PASSWORD, salt, iter).then(function (k) {
+    return deriveFileKey(pw, salt, iter).then(function (k) {
       return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, k, enc.encode(JSON.stringify(payload)));
     }).then(function (ct) {
       return { odigoSecure: true, secureType: 'password-file', version: 1, app: 'odigo', appVersion: appVersion, encryptedAt: kstNow(), scope: scope,

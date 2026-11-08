@@ -72,7 +72,7 @@
       scopeFields(o) +
       '<label class="chk-all"><input type="checkbox" id="xPick"> 조사구를 하나씩 고르기</label><div id="xList"></div>' +
       '<div class="x-sum" id="xSum"></div>' +
-      '<p class="warn">파일 암호는 모든 어디고 사용자가 같은 <b>' + window.OdigoStore.FILE_PASSWORD + '</b>입니다. 받은 사람은 누구나 열 수 있으니 받을 사람만 있는 방에 보내 주세요.</p>' +
+      A().pwBox('xPw') +
       '<div class="sf-btns"><button class="btn primary" id="xShare">📤 공유하기 (카톡·문자 등)</button><button class="btn" id="xSave">💾 파일로 저장</button><button class="btn" id="xCopy">📋 공유 문구 복사</button></div>');
     var pickEl = body.querySelector('#xPick'), listEl = body.querySelector('#xList'), sumEl = body.querySelector('#xSum');
     var chosen = null;
@@ -103,13 +103,15 @@
     pickEl.addEventListener('change', function () { chosen = null; refresh(); });
     refresh();
     function build() {
+      var pw = A().pwGet(body, 'xPw');
+      if (!pw) return Promise.reject({ nopw: true });
       var sc = get(), p = picked(), ids = {}; p.forEach(function (s) { ids[s.id] = 1; });
       var visits = T.visits().filter(function (x) { return ids[x.siteId]; });
       var nick = (T.profile() || {}).nickname || '';
       var scope = { division: sc.div, type: sc.type, crop: sc.crop, title: scopeTitle(sc), sites: p.length, visits: visits.length, from: nick, picked: !!pickEl.checked };
-      return window.OdigoStore.exportFile({ sites: p, visits: visits }, scope, T.APP_VERSION).then(function (obj) {
+      return window.OdigoStore.exportFile({ sites: p, visits: visits }, scope, T.APP_VERSION, pw).then(function (obj) {
         var name = 'odigo_' + safeName(scope.title.replace(/ › /g, '_')) + '_' + p.length + '건_' + today() + '.json';
-        var text = '[어디고 자료] ' + nick + ' · ' + scope.title + ' ' + p.length + '건\n파일 암호 ' + window.OdigoStore.FILE_PASSWORD + ' · 어디고 ⓘ › 자료 파일 가져오기로 여세요\nhttps://ubaldos00-ship-it.github.io/odigo/';
+        var text = '[어디고 자료] ' + nick + ' · ' + scope.title + ' ' + p.length + '건\n파일 암호는 따로 알려 드립니다 · 어디고 ⓘ › 자료 파일 가져오기로 여세요\nhttps://ubaldos00-ship-it.github.io/odigo/';
         return { obj: obj, name: name, text: text };
       });
     }
@@ -131,7 +133,7 @@
       download(r.obj, r.name); copy(r.text);
       A().toast('이 기기에서는 파일 공유가 안 되어 파일을 저장하고 문구를 복사했습니다. 카톡에서 파일을 첨부해 보내세요.');
     }
-    function fail() { A().toast('파일을 만들지 못했습니다'); }
+    function fail(e) { if (e && e.nopw) return; A().toast('파일을 만들지 못했습니다'); }
   }
   function download(obj, name) {
     var blob = new Blob([JSON.stringify(obj)], { type: 'application/json' });
@@ -528,7 +530,7 @@
       A().previewMerge({ sites: r.sites, visits: [] }, { title: '텐아르 파일 → 농어업과 (' + desc + ')', from: '텐아르 파일', sites: r.sites.length });
     }
     if (o && o.tenarSecure === true && o.secureType === 'password-file') {
-      var body = A().openSheet('텐아르 파일 암호', '<p class="muted">텐아르에서 이 파일을 만들 때 정한 암호를 넣으세요. (어디고 공통 암호 2026과 다를 수 있습니다)</p>' +
+      var body = A().openSheet('텐아르 파일 암호', '<p class="muted">텐아르에서 이 파일을 만들 때 정한 암호를 넣으세요. (어디고 파일 암호와 다를 수 있습니다)</p>' +
         '<input class="inp" id="tnPw" type="password" autocomplete="off">' +
         '<div class="row"><button class="btn primary full" id="tnOpen">열기</button></div>');
       var pw = body.querySelector('#tnPw'); pw.focus();

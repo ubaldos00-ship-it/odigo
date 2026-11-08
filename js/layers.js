@@ -48,10 +48,8 @@
     { id: 'adname', ko: '행정지역명', mode: true,
       desc: '시도·시군구·읍면동·리 이름을 구역 가운데 표시(경계선을 꺼도 이름은 보임) · 읍면동 11·리 12 이상', src: '위 경계 자료' },
     { id: 'hybrid', ko: '하이브리드', wmts: true,
-      desc: '지명·도로 이름 겹치기 (항공영상과 함께 쓰면 좋음)', src: '브이월드 WMTS Hybrid' },
-    { id: 'traffic', ko: '교통상황 (ITS 실시간)', ext: true, color: '#2f9e44',
-      desc: '국가교통정보센터 실시간 속도 · ITS 지도와 같은 기준(제한속도 대비 원활 80%↑·서행 40~80%·정체 40%↓) · 확대 11 이상(시군도 14 이상) · 주변정보의 교통상황과 같은 버튼',
-      src: '국가교통정보센터(ITS)' }
+      desc: '지명·도로 이름 겹치기 (항공영상과 함께 쓰면 좋음)', src: '브이월드 WMTS Hybrid' }
+    /* v4.0: 「교통상황(ITS 실시간)」은 주변정보와 같은 버튼이라 레이어에서는 뺌 (주변정보에서 켜고 끔) */
   ];
   /* 지도에 그리는 순서(아래→위): 하이브리드는 배경 바로 위, 경계·용도 → 지적도가 가장 위 */
   var DRAW_ORDER = ['agripromo', 'landuse', 'lhblpn', 'terrain', 'landprice', 'adri', 'ademd', 'adsigg', 'adsido', 'cadastral'];

@@ -123,7 +123,7 @@
         '<button class="btn" data-a="copy"' + (phase === 'locating' ? ' disabled' : '') + '>📋 문구 복사</button>' +
       '</div>' +
       '<p class="muted">위치는 어디고 서버로 보내지 않습니다. 카톡·문자 앱에서 내용을 확인하고 직접 전송하세요.</p>';
-    var body = A().openSheet('🚨 나 조사하러 간다', html);
+    var body = A().openSheet('🚨 출장다녀오겠습니다', html);
     var ta = body.querySelector('#sfText');
     ta.addEventListener('input', function () { c.text = ta.value; c.edited = true; });
     function on(a, fn) { var b = body.querySelector('[data-a="' + a + '"]'); if (b) b.addEventListener('click', fn); }

@@ -646,3 +646,45 @@ body.pin-labels .maplibregl-marker.pin-wrap .pin-label { display: block; }
 .gift-tb td small { display: block; color: var(--soft); font-size: 11px; }
 .gift-tb td.ok { color: #2b8a3e; font-weight: 700; } .gift-tb td.no { color: #adb5bd; }
 .gift-tb tr { cursor: pointer; } .gift-tb tr.sel td { background: #eef6ff; }
+
+/* ───────── v4.0 ───────── */
+/* 3. 핀 위 업무명 = 타원 배경 (어디고·카카오·네이버 지도 같게) */
+.maplibregl-marker.pin-wrap .pin-top, .ap-top { text-shadow: none; background: rgba(11,58,103,.9); color: #fff; padding: 1px 8px 2px; border-radius: 999px; box-shadow: 0 1px 3px rgba(0,0,0,.3); line-height: 1.25; margin-bottom: 4px; }
+/* 4. 시트 크기 조절 바: 손가락으로 잡기 쉽게 넓게 (제목 줄도 끌 수 있음) */
+.sheet-grab { height: 30px; margin-bottom: -6px; }
+.sheet-grab span { width: 64px; height: 6px; border-radius: 3px; background: #aab4b0; }
+.sheet-head { touch-action: none; }
+/* 7. GPS 표시: 한 칸 위 · 투명도 20% */
+.gps-status { bottom: calc(134px + var(--safe-b)); opacity: .8; }
+/* 6. 오늘 방문·내 조사 장소: 숫자는 글자 아래 */
+#btnToday, #btnPlaces { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; line-height: 1.1; }
+#btnToday span, #btnPlaces span { font-size: 12px; padding: 0 7px; }
+/* 2. 답례품 버튼: 주변정보 위 */
+.fab.gift span { font-size: 21px; }
+/* 5. 주변정보 위 작은 버튼 */
+.nb-quick { display: flex; gap: 6px; justify-content: flex-end; margin: -4px 0 8px; }
+.nbq { border: 1.5px solid #1971c2; color: #1971c2; background: #fff; border-radius: 999px; padding: 4px 11px; font-size: 12.5px; font-weight: 800; }
+.nbq.off { border-color: #adb5bd; color: #495057; }
+/* 9. 카드 아래 핀 설정 */
+.pin-set-b { border-style: dashed; }
+/* 1. 파일 암호 */
+.pw-box { background: #fff9db; border: 1px solid #ffe066; border-radius: 10px; padding: 8px 10px; margin: 8px 0; }
+.pw-box .inp { margin-bottom: 6px; }
+/* 10. 어디고 길찾기 */
+.nav-bar { position: fixed; z-index: 25; left: 8px; right: 8px; top: calc(62px + env(safe-area-inset-top, 0px)); background: #fff; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.25); padding: 8px 10px; font-size: 13.5px; max-width: 620px; margin: 0 auto; }
+.nav-bar .nv-main { display: flex; align-items: center; gap: 8px; }
+.nav-bar .nv-turn { font-size: 26px; width: 36px; text-align: center; }
+.nav-bar .nv-txt { flex: 1; min-width: 0; }
+.nav-bar .nv-txt b { display: block; font-size: 15px; }
+.nav-bar .nv-sum { color: var(--soft); font-size: 12.5px; }
+.nav-bar .row { margin: 6px 0 0; }
+.nav-bar .btn { padding: 6px 10px; font-size: 13px; }
+.nv-pick { display: grid; grid-template-columns: 52px 1fr auto; gap: 6px; align-items: center; margin: 6px 0; }
+.nv-pick b { font-size: 13px; }
+.nv-pick .val { font-size: 13.5px; background: #f6f8f7; border-radius: 8px; padding: 7px 9px; min-height: 34px; }
+.nv-steps { font-size: 13px; }
+.nv-steps div { padding: 5px 0; border-bottom: 1px solid #eef1ef; }
+.nv-flag { width: 26px; height: 26px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.4); color: #fff; font-weight: 900; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.nv-flag.s { background: #2b8a3e; } .nv-flag.e { background: #e03131; }
+/* v4.0 입력칸 누를 때 확대 방지(보조): 휴대폰에서는 입력 글자 16px 이상 */
+@media (pointer: coarse) { input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea { font-size: 16px !important; } }

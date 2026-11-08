@@ -88,6 +88,20 @@
     g.fillText('P', 13 * r, 13.5 * r);
     return { width: s, height: s, data: g.getImageData(0, 0, s, s).data };
   }
+  /* v4.0 묶음(동그라미) 가운데 글자·이모지 그림 (지도 글꼴 없이 그림으로) */
+  function makeGlyph(t, px) {
+    var r = 2, s = 24 * r, cv = document.createElement('canvas'); cv.width = cv.height = s;
+    var g = cv.getContext('2d');
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = (t === 'P' ? 'bold ' : '') + (px * r) + 'px system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+    g.fillStyle = '#fff'; g.fillText(t, 12 * r, 13 * r);
+    return { width: s, height: s, data: g.getImageData(0, 0, s, s).data };
+  }
+  function addClusterIcon(map, src, img, glyph, px, minzoom, sizes, before) {
+    if (!map.hasImage(img)) map.addImage(img, makeGlyph(glyph, px), { pixelRatio: 2 });
+    map.addLayer({ id: src + '-clico', type: 'symbol', source: src, filter: ['has', 'point_count'], minzoom: minzoom,
+      layout: { 'icon-image': img, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'icon-size': ['step', ['get', 'point_count']].concat(sizes) } }, before);
+  }
   function roundRect(g, x, y, w, h, rad) { g.beginPath(); g.moveTo(x + rad, y); g.arcTo(x + w, y, x + w, y + h, rad); g.arcTo(x + w, y + h, x, y + h, rad); g.arcTo(x, y + h, x, y, rad); g.arcTo(x, y, x + w, y, rad); g.closePath(); }
 
   function ensureParkLayers() {
@@ -102,6 +116,8 @@
         'circle-radius': ['step', ['get', 'point_count'], 11, 10, 15, 30, 19, 100, 24] } });
     map.addLayer({ id: 'nb-parking-pt', type: 'symbol', source: 'nb-parking', filter: ['!', ['has', 'point_count']], minzoom: PARK_MIN_ZOOM,
       layout: { 'icon-image': ['case', ['==', ['get', 'se'], '공영'], 'nb-park-pub', 'nb-park-pri'], 'icon-allow-overlap': true, 'icon-size': 1 } });
+    addClusterIcon(map, 'nb-parking', 'nb-cl-p', 'P', 15, PARK_MIN_ZOOM, [0.85, 10, 1.05, 30, 1.3, 100, 1.6]);
+    map.on('click', 'nb-parking-clico', function (e) { var f = e.features[0]; Promise.resolve(map.getSource('nb-parking').getClusterExpansionZoom(f.properties.cluster_id)).then(function (z) { map.easeTo({ center: f.geometry.coordinates, zoom: Math.min(z, 18) }); }); });
     map.on('click', 'nb-parking-pt', function (e) { var f = e.features && e.features[0]; if (f) showParkPopup(parkAll[f.properties.k]); });
     map.on('click', 'nb-parking-cluster', function (e) {
       var f = e.features[0];
@@ -135,7 +151,7 @@
 
   function setParkVisible(on) {
     var map = app().map;
-    ['nb-parking-cluster', 'nb-parking-pt'].forEach(function (id) { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); });
+    ['nb-parking-cluster', 'nb-parking-clico', 'nb-parking-pt'].forEach(function (id) { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); });
   }
 
   function pushToMap(list) {
@@ -326,6 +342,8 @@
         'circle-radius': ['step', ['get', 'point_count'], 9, 10, 12, 30, 15, 100, 19] } }, before);
     map.addLayer({ id: 'nb-cctv-pt', type: 'symbol', source: 'nb-cctv', filter: ['!', ['has', 'point_count']], minzoom: CCTV_MIN_ZOOM,
       layout: { 'icon-image': 'nb-cam', 'icon-allow-overlap': true } }, before);
+    addClusterIcon(map, 'nb-cctv', 'nb-cl-cam', '📷', 12, CCTV_MIN_ZOOM, [0.8, 10, 1, 30, 1.2, 100, 1.5], before);
+    map.on('click', 'nb-cctv-clico', function (e) { var f = e.features[0]; Promise.resolve(map.getSource('nb-cctv').getClusterExpansionZoom(f.properties.cluster_id)).then(function (z) { map.easeTo({ center: f.geometry.coordinates, zoom: Math.min(z, 19) }); }); });
     map.on('click', 'nb-cctv-pt', function (e) { var f = e.features && e.features[0]; if (f) showCctvPopup(cctvAll[f.properties.k]); });
     map.on('click', 'nb-cctv-cluster', function (e) {
       var f = e.features[0];
@@ -340,7 +358,7 @@
   }
   function setCctvVisible(on) {
     var map = app().map;
-    ['nb-cctv-cluster', 'nb-cctv-pt'].forEach(function (id) { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); });
+    ['nb-cctv-cluster', 'nb-cctv-clico', 'nb-cctv-pt'].forEach(function (id) { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); });
   }
   function refreshCctv() {
     var map = app().map;
@@ -605,6 +623,8 @@
         'circle-radius': ['step', ['get', 'point_count'], 9, 10, 12, 30, 15] } });
     map.addLayer({ id: 'nb-vcam-pt', type: 'symbol', source: 'nb-vcam', filter: ['!', ['has', 'point_count']], minzoom: VCAM_MIN_ZOOM,
       layout: { 'icon-image': 'nb-vcam', 'icon-allow-overlap': true } });
+    addClusterIcon(map, 'nb-vcam', 'nb-cl-vcam', '🎥', 12, VCAM_MIN_ZOOM, [0.8, 10, 1, 30, 1.2]);
+    map.on('click', 'nb-vcam-clico', function (e) { var f = e.features[0]; Promise.resolve(map.getSource('nb-vcam').getClusterExpansionZoom(f.properties.cluster_id)).then(function (z) { map.easeTo({ center: f.geometry.coordinates, zoom: Math.min(z, 16) }); }); });
     map.on('click', 'nb-vcam-pt', function (e) { var f = e.features && e.features[0]; if (f) showVcamPopup(vcamAll[f.properties.k]); });
     map.on('click', 'nb-vcam-cluster', function (e) {
       var f = e.features[0];
@@ -619,7 +639,7 @@
   }
   function setVcamVisible(on) {
     var map = app().map;
-    ['nb-vcam-cluster', 'nb-vcam-pt'].forEach(function (id) { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); });
+    ['nb-vcam-cluster', 'nb-vcam-clico', 'nb-vcam-pt'].forEach(function (id) { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); });
   }
   function refreshVcam() {
     var map = app().map;
@@ -835,8 +855,9 @@
 
   /* ═════════════ 패널 ═════════════ */
   function render(body) {
-    var html = '<div class="nb-intro">필요한 정보만 켜서 겹쳐 봅니다. 처음에는 모두 꺼져 있습니다.<br>' +
-      '연결된 항목만 켤 수 있고, 「준비 중」 항목은 실제 자료를 확인한 뒤 차례로 열립니다.</div>';
+    /* v4.0: 맨 위 작은 버튼 — 기본값(주차장·치안·교통 CCTV) · 전체 켜기 · 전체 끄기 */
+    var html = '<div class="nb-quick"><button type="button" class="nbq" data-nbq="def">기본값</button><button type="button" class="nbq" data-nbq="all">전체 켜기</button><button type="button" class="nbq off" data-nbq="off">전체 끄기</button></div>' +
+      '<div class="nb-intro">필요한 정보만 켜서 겹쳐 봅니다. 기본값 = 주차장·치안 안전정보·교통 CCTV 영상.</div>';
     LAYERS.forEach(function (L) {
       var wait = L.status !== 'live';
       html += '<div class="nb-item">' +
@@ -858,8 +879,7 @@
         '<input type="checkbox" data-nb="' + L.id + '"' + (state[L.id] ? ' checked' : '') + (wait ? ' disabled' : '') + '><span></span></label>' +
         '</div>';
     });
-    html += '<div class="row"><button class="btn full" id="nbAllOff">주변정보 모두 끄기</button></div>' +
-      '<p class="muted">※ 실제 자료가 연결되지 않은 항목은 예시 위치·영상·교통 상태를 보여 주지 않습니다.</p>';
+    html += '<p class="muted">※ 실제 자료가 연결되지 않은 항목은 예시 위치·영상·교통 상태를 보여 주지 않습니다.</p>';
     body.innerHTML = html;
 
     /* 기준일은 meta를 받은 뒤 채움 */
@@ -902,10 +922,18 @@
     if (op) op.addEventListener('input', function () { body.querySelector('#nbSafetyOpV').textContent = op.value + '%'; setSafetyOpacity(1 - op.value / 100); });
     var cc = body.querySelector('#nbCrimeCenter');
     if (cc) cc.addEventListener('click', crimeAtCenter);
-    body.querySelector('#nbAllOff').addEventListener('click', function () {
-      allOff();
-      body.querySelectorAll('input[data-nb]').forEach(function (inp) { inp.checked = false; });
-      app().toast('주변정보를 모두 껐습니다');
+    var DEF = ['parking', 'safety', 'cctvVideo'];
+    body.querySelectorAll('[data-nbq]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-nbq');
+        body.querySelectorAll('input[data-nb]').forEach(function (inp) {
+          if (inp.disabled) return;
+          var want = k === 'all' ? true : k === 'off' ? false : DEF.indexOf(inp.getAttribute('data-nb')) >= 0;
+          if (inp.checked !== want) { inp.checked = want; inp.dispatchEvent(new Event('change')); }
+        });
+        if (k === 'off') { allOff(); app().toast('주변정보를 모두 껐습니다'); }
+        else app().toast(k === 'all' ? '주변정보를 모두 켰습니다' : '기본값(주차장·치안·교통 CCTV)으로 켰습니다');
+      });
     });
   }
 
