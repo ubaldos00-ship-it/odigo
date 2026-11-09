@@ -1,4 +1,5 @@
-/* 어디고 v4.3 — 안내 모드: 자동차 표시(진행 방향)·3D 기울임·차는 화면 아래쪽, 경로 위 화살표, 지나온 길 지우기, 위·아래 메뉴 숨김(안내창은 끌어서 옮기기)
+/* 어디고 v4.5 — 검색어로 출발·도착 고르기, 아래쪽 남은 시간·거리·도착 예정, 잘못된 재탐색 고침(선분 거리·2번 연속·GPS 정확도), 단속카메라·과속방지턱 표시·음성
+   어디고 v4.3 — 안내 모드: 자동차 표시(진행 방향)·3D 기울임·차는 화면 아래쪽, 경로 위 화살표, 지나온 길 지우기, 위·아래 메뉴 숨김(안내창은 끌어서 옮기기)
    어디고 v4.2 — 경로 「추천(고속도로+최단)」 추가·기본값
    어디고 v4.1 — 경로 고르기(고속도로 우선·최단거리·무료도로, Valhalla 공개 서버 · 실패하면 OSRM) + 음성 안내(휴대폰 내장 한국어 음성)
    어디고 v4.0 — 어디고 지도 안 길찾기 (사용자 요청 2026-11-09: 「네비게이션 보면서 전체 핀을 보고 싶다」)
@@ -96,15 +97,37 @@
     body.querySelector('#nvQ').addEventListener('input', draw); draw();
   }
 
+  /* v4.5 검색어로 고르기 (장소·주소·내 조사구) */
+  function pickSearch(which, q0) {
+    var body = A().openSheet((which === 'start' ? '출발' : '도착') + ' · 검색해서 고르기',
+      '<form id="nvSF" class="row" style="flex-wrap:nowrap"><input class="inp" id="nvSQ" placeholder="장소·주소 (예: 성주군청, 경산리 100)" enterkeyhint="search" style="flex:1"><button class="btn primary" type="submit">검색</button></form><div id="nvSList"></div>');
+    var inp = body.querySelector('#nvSQ'), out = body.querySelector('#nvSList');
+    function go(q) {
+      q = (q || '').trim(); if (!q) return;
+      out.innerHTML = '<p class="muted">검색 중…</p>';
+      Promise.resolve(A().search ? A().search(q) : []).then(function (list) {
+        list = (list || []).filter(function (r) { return r && isFinite(r.lat) && isFinite(r.lng); });
+        if (!list.length) { out.innerHTML = '<p class="muted">「' + esc(q) + '」 검색 결과가 없습니다.</p>'; return; }
+        out.innerHTML = list.slice(0, 20).map(function (r, i) { return '<button type="button" class="sr-item" data-i="' + i + '"><b>' + (r.kind ? '<small class="muted">' + esc(r.kind) + '</small> ' : '') + esc(r.name) + '</b><span>' + esc(r.addr || '') + '</span></button>'; }).join('');
+        out.querySelectorAll('[data-i]').forEach(function (b) {
+          b.addEventListener('click', function () { var r = list[+b.getAttribute('data-i')]; st[which] = { name: r.name, lat: +r.lat, lng: +r.lng }; st.alt = {}; open({ noAuto: false }); });
+        });
+      }, function () { out.innerHTML = '<p class="muted">검색하지 못했습니다 (인터넷 확인).</p>'; });
+    }
+    body.querySelector('#nvSF').addEventListener('submit', function (e) { e.preventDefault(); inp.blur(); go(inp.value); });
+    if (q0) { inp.value = q0; go(q0); } else setTimeout(function () { try { inp.focus(); } catch (e) {} }, 200);
+  }
+
   /* ───── 길찾기 창 ───── */
   function open(o) {
     o = o || {};
+    if (o.searchQ) { pickSearch('end', o.searchQ); if (!st.start) myPos().then(function (p) { if (p && !st.start) st.start = p; }); return; }
     if (o.end && o.end !== st.end) { st.end = o.end; st.alt = {}; }
     if (o.start) st.start = o.start;
     var html = '<div class="nv-pick"><b>🟢 출발</b><div class="val">' + ptHtml(st.start) + '</div><span></span></div>' +
-      '<div class="row" style="margin-top:0"><button class="btn sm" data-p="start:cur">◎ 현재 위치</button><button class="btn sm" data-p="start:map">지도에서</button><button class="btn sm" data-p="start:site">내 조사구</button></div>' +
+      '<div class="row" style="margin-top:0"><button class="btn sm" data-p="start:cur">◎ 현재 위치</button><button class="btn sm" data-p="start:search">🔍 검색</button><button class="btn sm" data-p="start:map">지도에서</button><button class="btn sm" data-p="start:site">내 조사구</button></div>' +
       '<div class="nv-pick"><b>🔴 도착</b><div class="val">' + ptHtml(st.end) + '</div><button class="btn sm" id="nvSwap" title="출발·도착 바꾸기">⇅</button></div>' +
-      '<div class="row" style="margin-top:0"><button class="btn sm" data-p="end:site">내 조사구</button><button class="btn sm" data-p="end:map">지도에서</button><button class="btn sm" data-p="end:cur">◎ 현재 위치</button></div>' +
+      '<div class="row" style="margin-top:0"><button class="btn sm" data-p="end:search">🔍 검색</button><button class="btn sm" data-p="end:site">내 조사구</button><button class="btn sm" data-p="end:map">지도에서</button><button class="btn sm" data-p="end:cur">◎ 현재 위치</button></div>' +
       '<label class="fld">경로 고르기</label><div class="nv-modes">' + MODES.map(function (m) {
         var a = st.alt[m.id];
         return '<button type="button" class="nv-mode' + (st.mode === m.id ? ' on' : '') + '" data-mode="' + m.id + '"><b>' + m.name + '</b>' + (m.sub ? '<i>' + m.sub + '</i>' : '') + '<small>' + (a ? fmtD(a.distance) + ' · ' + fmtT(a.duration) : (st.start && st.end ? '…' : '')) + '</small></button>';
@@ -119,6 +142,7 @@
         st.alt = {};
         if (k[1] === 'map') pickOnMap(which);
         else if (k[1] === 'site') pickSite(which);
+        else if (k[1] === 'search') pickSearch(which, '');
         else { A().toast('현재 위치를 확인하는 중…'); myPos().then(function (p) { if (!p) { A().toast('현재 위치를 확인하지 못했습니다 (위치 권한 확인)'); return; } st[which] = p; open(); }); }
       });
     });
@@ -159,6 +183,7 @@
     return '<div class="gift-sum">🚗 <b>' + esc(modeOf(r.mode).name) + '</b> · <b>' + fmtD(r.distance) + '</b> · 약 <b>' + fmtT(r.duration) + '</b> <small class="muted">(교통 상황 미반영' + (r.src === 'osrm' ? ' · 보조 서버(빠른 길)' : '') + ')</small></div>' +
       '<div class="row"><button class="btn primary" id="nvStart" style="flex:1">▶ 안내 시작 (핀 함께 보기)</button><button class="btn" id="nvFit">경로 전체 보기</button></div>' +
       '<label class="chk-all"><input type="checkbox" id="nvVoice"' + (st.voice ? ' checked' : '') + '> 🔊 음성 안내</label>' +
+      '<label class="chk-all"><input type="checkbox" id="nvHz"' + (st.hzOn ? ' checked' : '') + '> 📷 단속카메라·과속방지턱 표시·알림 <small class="muted" id="nvHzN">' + hzText() + '</small></label>' +
       '<details><summary class="muted">갈림길 ' + st.steps.length + '곳 보기</summary><div class="nv-steps">' + st.steps.map(function (s) { return '<div>' + s.icon + ' ' + esc(s.text) + ' <small class="muted">' + fmtD(s.distance) + '</small></div>'; }).join('') + '</div></details>' +
       '<div class="row"><button class="btn sm" data-ext="k">카카오맵으로</button><button class="btn sm" data-ext="n">네이버지도로</button><button class="btn sm" data-ext="t">T맵으로</button></div>';
   }
@@ -166,6 +191,7 @@
     var sb = body.querySelector('#nvStart'); if (sb) sb.addEventListener('click', startGuide);
     var fb = body.querySelector('#nvFit'); if (fb) fb.addEventListener('click', fitRoute);
     var vb = body.querySelector('#nvVoice'); if (vb) vb.addEventListener('change', function () { setVoice(vb.checked); });
+    var hb = body.querySelector('#nvHz'); if (hb) hb.addEventListener('change', function () { st.hzOn = hb.checked; lsSet(HZ_KEY, hb.checked ? '1' : '0'); hzDraw(); });
     body.querySelectorAll('[data-ext]').forEach(function (b) {
       b.addEventListener('click', function () {
         var e = st.end, n = encodeURIComponent(e.name || '목적지'), k = b.getAttribute('data-ext');
@@ -202,7 +228,7 @@
         steps: leg.maneuvers.map(function (m) {
           var v = m.verbal_pre_transition_instruction || m.instruction || '';
           if (/[A-Za-z]{3}/.test(v)) v = m.instruction || '';
-          return { text: m.instruction || '', voice: v.trim(), icon: VICON[m.type] || '↑', distance: (m.length || 0) * 1000, loc: c[Math.min(m.begin_shape_index || 0, c.length - 1)] };
+          return { text: m.instruction || '', voice: v.trim(), icon: VICON[m.type] || '↑', distance: (m.length || 0) * 1000, time: m.time || 0, si: Math.min(m.begin_shape_index || 0, c.length - 1), loc: c[Math.min(m.begin_shape_index || 0, c.length - 1)] };
         }) };
     });
   }
@@ -212,7 +238,7 @@
       if (!d || d.code !== 'Ok' || !d.routes || !d.routes[0]) return null;
       var r = d.routes[0];
       return { src: 'osrm', mode: mode, distance: r.distance, duration: r.duration, coords: r.geometry.coordinates,
-        steps: (r.legs[0] && r.legs[0].steps || []).filter(function (s) { return s.maneuver; }).map(function (s) { var t = osrmText(s); return { text: t[0], voice: t[0], icon: t[1], distance: s.distance, loc: s.maneuver.location }; }) };
+        steps: (r.legs[0] && r.legs[0].steps || []).filter(function (s) { return s.maneuver; }).map(function (s) { var t = osrmText(s); return { text: t[0], voice: t[0], icon: t[1], distance: s.distance, time: s.duration || 0, loc: s.maneuver.location }; }) };
     });
   }
   function route(a, b, mode, quiet) {
@@ -234,10 +260,14 @@
     return g.getImageData(0, 0, 44, 44);
   }
   /* 지나온 길 지우기: 경로에서 지금 위치와 가장 가까운 점(앞쪽으로만 찾음)부터 남은 선만 그림 */
+  /* v4.5 진행 위치 = 경로 선분 중 가장 가까운 곳(앞쪽 위주로 찾음) → 지나온 길 지우기·갈림길 넘기기·남은 거리에 씀 */
   function trim(la, lo) {
-    var c = st.route.coords, best = 1e9, bi = st.ci, end = Math.min(c.length, st.ci + 600);
-    for (var i = st.ci; i < end; i++) { var d = distM(la, lo, c[i][1], c[i][0]); if (d < best) { best = d; bi = i; } }
-    st.ci = bi;
+    var c = st.route.coords, best = 1e9, bi = st.ci, from = Math.max(0, st.ci - 3), end = Math.min(c.length - 1, st.ci + 800);
+    for (var i = from; i < end; i++) { var d = segD(la, lo, c[i], c[i + 1]); if (d < best - 0.5) { best = d; bi = i; } }
+    if (best < 80) st.ci = bi;   /* 많이 벗어났을 땐 진행 위치를 그대로 둠 */
+    bi = st.ci;
+    var nx = c[Math.min(bi + 1, c.length - 1)];
+    st.pg = st.cum[Math.min(bi + 1, c.length - 1)] - Math.min(distM(la, lo, nx[1], nx[0]), st.cum[Math.min(bi + 1, c.length - 1)] - st.cum[bi]);
     var src = A().map.getSource('nv-route');
     if (src) src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[lo, la]].concat(c.slice(bi + 1)) } });
     return best;
@@ -272,8 +302,14 @@
     }
   }
   function useRoute(r) {
-    st.route = r; st.steps = r.steps; st.idx = 1; st.said = {}; st.ci = 0;
-    draw();
+    st.route = r; st.steps = r.steps; st.idx = 1; st.said = {}; st.ci = 0; st.offCnt = 0; st.pg = 0;
+    var c = r.coords; st.cum = [0]; for (var i = 1; i < c.length; i++) st.cum.push(st.cum[i - 1] + distM(c[i - 1][1], c[i - 1][0], c[i][1], c[i][0]));
+    var lastSi = 0;
+    r.steps.forEach(function (sp) {   /* OSRM은 갈림길의 경로 위 번호가 없어서 가장 가까운 점(앞쪽으로)을 찾음 */
+      if (sp.si == null) { var b = 1e9, bi = lastSi; for (var j = lastSi; j < c.length; j++) { var d = distM(sp.loc[1], sp.loc[0], c[j][1], c[j][0]); if (d < b) { b = d; bi = j; } if (d < 2) break; } sp.si = bi; }
+      lastSi = sp.si;
+    });
+    draw(); hzLoad(r);
   }
   function draw() {
     var map = A().map, data = { type: 'Feature', geometry: { type: 'LineString', coordinates: st.route.coords } };
@@ -299,6 +335,7 @@
     if (map.getSource('nv-route')) map.removeSource('nv-route');
     st.markers.forEach(function (m) { m.remove(); }); st.markers = [];
     st.route = null; st.steps = []; st.alt = {};
+    hzClear();
   }
   function fitRoute() {
     if (!st.route) return;
@@ -329,11 +366,19 @@
     if (st.watch != null) { try { navigator.geolocation.clearWatch(st.watch); } catch (e) {} st.watch = null; }
     if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
     $('navBar').hidden = true;
+    bottom(null);
     navMode(false);
   }
+  /* v4.5 경로까지 거리 = 꼭짓점이 아니라 선분까지 거리 (고속도로처럼 꼭짓점이 드문 곳에서 잘못 「벗어남」 되던 것 고침) */
+  function segD(la, lo, a, b) {
+    var k = Math.cos(la * Math.PI / 180) * 111320, M = 110540;
+    var ax = (a[0] - lo) * k, ay = (a[1] - la) * M, bx = (b[0] - lo) * k, by = (b[1] - la) * M;
+    var dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0;
+    var x = ax + t * dx, y = ay + t * dy; return Math.sqrt(x * x + y * y);
+  }
   function offRoute(la, lo) {
-    var best = 1e9, c = st.route.coords;
-    for (var i = 0; i < c.length; i += Math.max(1, Math.floor(c.length / 400))) { var d = distM(la, lo, c[i][1], c[i][0]); if (d < best) best = d; }
+    var best = 1e9, c = st.route.coords, from = Math.max(0, st.ci - 20), to = Math.min(c.length - 1, st.ci + 800);
+    for (var i = from; i < to; i++) { var d = segD(la, lo, c[i], c[i + 1]); if (d < best) { best = d; if (d < 5) break; } }
     return best;
   }
   function onPos(p) {
@@ -344,16 +389,17 @@
     else if (st.prev && distM(st.prev[0], st.prev[1], la, lo) > 5) st.carH = bearing(st.prev[0], st.prev[1], la, lo);
     if (!st.prev || distM(st.prev[0], st.prev[1], la, lo) > 5) st.prev = [la, lo];
     carMarker(la, lo); camera(la, lo, true);
-    /* 다음 갈림길에 25m 안으로 오면 그다음으로 */
-    while (st.idx < st.steps.length) {
-      var m = st.steps[st.idx].loc;
-      if (distM(la, lo, m[1], m[0]) < 25) st.idx++; else break;
-    }
+    /* v4.5 갈림길 넘기기: 경로 위 진행 위치가 갈림길을 10m 넘게 지나면 다음으로 (예전: 갈림길 25m 안에 GPS가 찍혀야만 → 고속에서 놓쳐 안내가 멈추던 문제) */
+    trim(la, lo);
+    while (st.idx < st.steps.length - 1 && st.pg > st.cum[st.steps[st.idx].si] + 10) st.idx++;
     var end = st.end, left = distM(la, lo, end.lat, end.lng);
     if (left < 30) { if (!st.said.arr) { st.said.arr = 1; say('목적지 근처에 도착했습니다. 안내를 마칩니다.'); } bar(null, true); return; }
     /* 경로에서 80m 넘게 벗어나면 다시 계산 (30초에 한 번까지) */
-    var off = trim(la, lo);
-    if (off > 60 && offRoute(la, lo) > 60 && Date.now() - st.lastReroute > 15000) {
+    /* 다시 탐색: 경로 선에서 (60m 또는 GPS 오차의 2배) 넘게 떨어진 위치가 2번 연속일 때만 · 오차 100m 넘는 위치는 무시 */
+    var acc = p.coords.accuracy || 0, offD = offRoute(la, lo), lim = Math.max(60, acc * 2);
+    if (acc <= 100 && offD > lim) st.offCnt = (st.offCnt || 0) + 1; else if (offD <= lim) st.offCnt = 0;
+    if (st.offCnt >= 2 && Date.now() - st.lastReroute > 15000) {
+      st.offCnt = 0;
       st.lastReroute = Date.now(); A().toast('경로를 벗어나 다시 계산합니다'); say('경로를 벗어나 다시 계산합니다');
       st.start = { name: '현재 위치', lat: la, lng: lo, cur: true };
       route(st.start, st.end, st.mode, true).then(function (r) { if (r) { st.alt = {}; st.alt[st.mode] = r; useRoute(r); A().toast('새 경로로 안내합니다'); } bar([la, lo]); });
@@ -362,20 +408,25 @@
     /* 음성: 빠르면(시속 60km 넘게) 1km·300m 앞, 아니면 500m·150m 앞에서 한 번씩 */
     var s = st.steps[st.idx];
     if (s) {
-      var dN = distM(la, lo, s.loc[1], s.loc[0]), far = spd > 16 ? 1000 : 500, near = spd > 16 ? 300 : 150, k = st.idx;
+      var dN = Math.max(0, st.cum[s.si] - st.pg), far = spd > 16 ? 1000 : 500, near = spd > 16 ? 300 : 150, k = st.idx;
       if (dN <= near && !st.said['n' + k]) { st.said['n' + k] = st.said['f' + k] = 1; say(s.voice); }
       else if (dN <= far && dN > near * 1.5 && !st.said['f' + k]) { st.said['f' + k] = 1; say(sayDist(dN) + ' 앞, ' + s.voice); }
     }
+    hzCheck(la, lo, spd);
     bar([la, lo]);
   }
   function bar(pos, arrived) {
     var el = $('navBar'); el.hidden = false;
     var s = st.steps[Math.min(st.idx, st.steps.length - 1)], t = arrived ? ['목적지 근처에 도착했습니다', '🏁'] : [s ? s.text : '', s ? s.icon : '↑'];
-    var dNext = pos && s ? distM(pos[0], pos[1], s.loc[1], s.loc[0]) : (st.steps[st.idx - 1] ? st.steps[st.idx - 1].distance : 0);
-    var remain = 0; for (var i = st.idx; i < st.steps.length; i++) remain += st.steps[i].distance || 0;
-    if (pos) remain += dNext;
+    var total = st.cum[st.cum.length - 1] || st.route.distance, pg = st.pg || 0;
+    var dNext = s ? Math.max(0, st.cum[s.si] - pg) : 0;
+    var remain = Math.max(0, total - pg), rtime = 0, cur = st.steps[st.idx - 1];
+    for (var i = st.idx; i < st.steps.length; i++) rtime += st.steps[i].time || 0;
+    if (cur) { var segL = Math.max(1, st.cum[s ? s.si : st.cum.length - 1] - st.cum[cur.si]); rtime += (cur.time || 0) * Math.min(1, dNext / segL); }
+    if (!rtime && st.route.distance) rtime = st.route.duration * remain / st.route.distance;
+    bottom(arrived ? null : { d: remain, t: rtime });
     el.innerHTML = '<div class="nv-main"><span class="nv-turn">' + t[1] + '</span><span class="nv-txt"><b>' + (arrived ? '' : fmtD(dNext) + ' 앞 ') + esc(t[0]) + '</b>' +
-      '<span class="nv-sum">' + esc(st.end.name) + (arrived ? '' : ' · 남은 거리 ' + fmtD(pos ? remain : st.route.distance)) + '</span></span>' +
+      '<span class="nv-sum">' + esc(st.end.name) + (st.hzNext ? ' <span class="nv-hz">' + st.hzNext + '</span>' : '') + '</span></span>' +
       '<button class="nv-voice" id="nbVoice" title="음성 안내 켜기·끄기">' + (st.voice ? '🔊' : '🔇') + '</button></div>' +
       '<div class="row">' + (st.follow ? '' : '<button class="btn primary" id="nbMe">🚗 현위치</button>') + '<button class="btn" id="nbFit">경로 전체</button><button class="btn" id="nbInfo">길찾기 창</button><button class="btn danger" id="nbEnd" style="margin-left:auto">안내 끝내기</button></div>';
     el.querySelector('#nbVoice').onclick = function () { setVoice(!st.voice); this.textContent = st.voice ? '🔊' : '🔇'; };
@@ -387,6 +438,68 @@
     if (arrived) { st.guiding = false; if (st.watch != null) { try { navigator.geolocation.clearWatch(st.watch); } catch (e) {} st.watch = null; } }
   }
   if (window.speechSynthesis) try { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = function () {}; } catch (e) {}
+
+  /* ───── v4.5 아래쪽 남은 시간·거리·도착 예정 ───── */
+  function bottom(v) {
+    var el = document.getElementById('nvBottom');
+    if (!v) { if (el) el.hidden = true; return; }
+    if (!el) { el = document.createElement('div'); el.id = 'nvBottom'; el.className = 'nv-bottom'; document.body.appendChild(el); }
+    var eta = new Date(Date.now() + v.t * 1000);
+    el.innerHTML = '<span><small>남은 시간</small><b>' + fmtT(v.t) + '</b></span><span><small>남은 거리</small><b>' + fmtD(v.d) + '</b></span><span><small>도착 예정</small><b>' + eta.getHours() + ':' + ('0' + eta.getMinutes()).slice(-2) + '</b></span>';
+    el.hidden = false;
+  }
+
+  /* ───── v4.5 단속카메라·과속방지턱 ─────
+     ① 공공데이터 「전국무인교통단속카메라표준데이터」 → GitHub Actions가 만든 정적 파일(CAM_BASE/{격자}.json, [[위도,경도,제한속도,구분],…]) — 파일이 없으면 건너뜀
+     (OpenStreetMap Overpass 공개 서버는 앱 요청을 막고(502) 한국 자료도 거의 없어 쓰지 않음 · 과속방지턱은 전국 공공데이터가 없어 지자체 자료를 모아야 함)
+     경로에서 35m 안의 것만 표시, 앞쪽 카메라 300m(빠르면 600m)·방지턱 100m 앞에서 음성 */
+  var HZ_KEY = 'odigo_navHz', CAM_BASE = (location.pathname.indexOf('/odigo') === 0 || location.hostname === 'localhost' && !/\/home\//.test(location.pathname) ? 'data/cameras/' : 'https://ubaldos00-ship-it.github.io/odigo/data/cameras/');
+  st.hzOn = lsGet(HZ_KEY, '1') === '1'; st.hz = []; st.hzMk = [];
+  function hzText() { if (!st.hz.length) return st.route ? '(경로 위 자료 없음)' : ''; var c = st.hz.filter(function (h) { return h.k === 'cam'; }).length; return '(카메라 ' + c + ' · 방지턱 ' + (st.hz.length - c) + ')'; }
+  function hzClear() { st.hzMk.forEach(function (m) { m.remove(); }); st.hzMk = []; st.hz = []; st.hzNext = ''; }
+  function nearIdx(la, lo, c) { var best = 1e9, bi = -1; for (var i = 0; i < c.length - 1; i++) { var d = segD(la, lo, c[i], c[i + 1]); if (d < best) { best = d; bi = i; } } return [best, bi]; }
+  function hzLoad(r) {
+    hzClear();
+    var c = r.coords, bb = [90, 180, -90, -180];
+    c.forEach(function (p) { bb[0] = Math.min(bb[0], p[1]); bb[1] = Math.min(bb[1], p[0]); bb[2] = Math.max(bb[2], p[1]); bb[3] = Math.max(bb[3], p[0]); });
+    var cells = {}; for (var a = Math.floor(bb[0] / 0.5); a <= Math.floor(bb[2] / 0.5); a++) for (var b = Math.floor(bb[1] / 0.5); b <= Math.floor(bb[3] / 0.5); b++) cells[a + '_' + b] = 1;
+    var pubs = Object.keys(cells).slice(0, 12).map(function (k) {
+      return fetch(CAM_BASE + k + '.json').then(function (x) { return x.ok ? x.json() : []; }).then(function (rows) { return (rows || []).map(function (q) { return { k: 'cam', lat: q[0], lng: q[1], lim: q[2] || 0, t: q[3] || '' }; }); }, function () { return []; });
+    });
+    Promise.all(pubs).then(function (all) {
+      if (st.route !== r) return;
+      var out = [], seen = {};
+      [].concat.apply([], all).forEach(function (h) {
+        if (!isFinite(h.lat) || !isFinite(h.lng)) return;
+        var key = h.k + h.lat.toFixed(4) + h.lng.toFixed(4); if (seen[key]) return;
+        var ni = nearIdx(h.lat, h.lng, c); if (ni[0] > 35) return;
+        seen[key] = 1; h.i = ni[1]; out.push(h);
+      });
+      st.hz = out.sort(function (a, b) { return a.i - b.i; }); hzDraw();
+      var n = document.getElementById('nvHzN'); if (n) n.textContent = hzText();
+    });
+  }
+  function hzDraw() {
+    st.hzMk.forEach(function (m) { m.remove(); }); st.hzMk = [];
+    if (!st.hzOn) return;
+    st.hz.forEach(function (h) {
+      var el = document.createElement('div'); el.className = 'nv-hzm ' + h.k;
+      el.innerHTML = h.k === 'cam' ? '📷' + (h.lim ? '<b>' + h.lim + '</b>' : '') : '⚠︎';
+      el.title = h.k === 'cam' ? '단속카메라' + (h.lim ? ' ' + h.lim + 'km/h' : '') : '과속방지턱';
+      st.hzMk.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([h.lng, h.lat]).addTo(A().map));
+    });
+  }
+  function hzCheck(la, lo, spd) {
+    st.hzNext = '';
+    if (!st.hzOn || !st.hz.length) return;
+    for (var j = 0; j < st.hz.length; j++) {
+      var h = st.hz[j]; if (h.i < st.ci - 1) continue;
+      var d = Math.max(0, st.cum[Math.min(h.i + 1, st.cum.length - 1)] - st.pg), lim = h.k === 'cam' ? (spd > 22 ? 600 : 300) : 100;
+      if (d > 1500) break;
+      if (h.k === 'cam' && d < 1000 && !st.hzNext) st.hzNext = '📷 ' + fmtD(d) + (h.lim ? ' · ' + h.lim + 'km' : '');
+      if (d <= lim && !h.said) { h.said = 1; say(h.k === 'cam' ? sayDist(d) + ' 앞, 과속 단속 카메라' + (h.lim ? ', 제한 속도 ' + h.lim + '킬로미터' : '') + ' 입니다' : '과속방지턱이 있습니다'); }
+    }
+  }
 
   /* 안내창 끌어서 옮기기 (위아래로) */
   var dragBound = false;

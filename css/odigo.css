@@ -734,3 +734,18 @@ body.nav-mode .fab-col { bottom: calc(18px + var(--safe-b)); }
 /* v4.4 텐아르 답례품 함께 보기 */
 .chip.tg { background: #e6fcf5; color: #087f5b; border: 1px solid #63e6be; font-size: 10.5px; padding: 0 5px; border-radius: 8px; font-weight: 800; }
 .tg-src { grid-column: 1 / -1; color: #087f5b; font-size: 11.5px; font-weight: 700; }
+
+/* ───── v4.5 팝업 길찾기 · 안내 아래쪽 남은 시간·거리 · 단속카메라·방지턱 ───── */
+.pop-2 { display: flex; gap: 6px; margin-top: 6px; }
+.pop-2 .btn { flex: 1; padding: 8px 6px; }
+.nv-bottom { position: fixed; z-index: 25; left: 8px; right: 8px; bottom: calc(10px + var(--safe-b, 0px)); max-width: 620px; margin: 0 auto; display: flex; background: #fff; border-radius: 14px; box-shadow: 0 4px 16px rgba(0,0,0,.25); padding: 8px 6px; }
+.nv-bottom[hidden] { display: none; }
+.nv-bottom span { flex: 1; text-align: center; display: flex; flex-direction: column; border-right: 1px solid #eef1ef; }
+.nv-bottom span:last-child { border-right: 0; }
+.nv-bottom small { font-size: 11.5px; color: #868e96; }
+.nv-bottom b { font-size: 18px; color: #0b3a67; }
+body.nav-mode .fab-col { bottom: calc(86px + var(--safe-b, 0px)); }
+.nv-hz { display: inline-block; background: #fff4e6; color: #d9480f; border-radius: 8px; padding: 0 6px; font-weight: 800; }
+.nv-hzm { display: flex; align-items: center; gap: 1px; background: #fff; border: 2px solid #e03131; border-radius: 12px; padding: 0 4px; font-size: 13px; line-height: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.35); pointer-events: none; }
+.nv-hzm b { font-size: 11px; color: #c92a2a; }
+.nv-hzm.bump { border-color: #f08c00; color: #e67700; font-weight: 900; }

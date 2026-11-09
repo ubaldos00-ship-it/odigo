@@ -26,7 +26,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v4.4';
+  var APP_VERSION = 'v4.5';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -1678,6 +1678,19 @@
   });
   map.on('click', function () { hideResults(); });
   map.on('touchstart', function () { hideResults(); });
+  /* v4.5 검색창 옆 🧭: 고른 위치(검색 결과·지도에서 고른 곳)가 있으면 그곳으로, 검색어만 있으면 그 검색어로 도착지 찾기, 둘 다 없으면 길찾기 창 */
+  function searchPlaces(q) {
+    var mine = localSearch(q).map(function (x) { return { kind: '내 조사구', name: dispName(x), addr: x.addr || '', lat: x.lat, lng: x.lng }; });
+    return kakaoSearch(q).then(function (list) { return mine.concat((list || []).map(function (r) { return { kind: r.kind, name: r.name, addr: r.addr, lat: r.lat, lng: r.lng }; })); }, function () { return mine; });
+  }
+  $('btnRoute').addEventListener('click', function () {
+    if (!window.OdigoNav) { toast('길찾기 기능을 불러오지 못했습니다'); return; }
+    hideResults();
+    var q = $('searchInput').value.trim();
+    if (tempTarget) { var t = tempTarget; OdigoNav.open({ end: { name: t.name || t.addr || '고른 위치', lat: t.lat, lng: t.lng } }); return; }
+    if (q) { OdigoNav.open({ searchQ: q }); return; }
+    OdigoNav.open();
+  });
 
   /* 검색 결과·지도에서 고른 위치를 임시 핀으로 보여 주고 등록 버튼 제공 */
   function showCandidate(r, noFly) {
@@ -1687,7 +1700,7 @@
     if (!noFly) map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 16) });
     var wrap = document.createElement('div');
     wrap.innerHTML = '<b>' + esc(r.name) + '</b> <span class="cpw">' + copyBtn(r.addr) + '</span><div class="pop-addr">' + esc(r.addr || (r.lat.toFixed(5) + ', ' + r.lng.toFixed(5) + ' · 주소 확인 중…')) + '</div>' + mapAppBtns(r.name, r.lat, r.lng) +
-      '<button class="btn primary full" data-s>조사구로 등록</button>' +
+      '<div class="pop-2"><button class="btn primary" data-s>조사구로 등록</button><button class="btn" data-nav>🚗 길찾기</button></div>' +
       '<button class="btn sf-go full" data-sf style="margin-top:6px">🚨 이 위치 보내기</button>';
     var pop = new maplibregl.Popup({ offset: 40, closeButton: true, closeOnClick: false, maxWidth: '280px' })
       .setLngLat([r.lng, r.lat]).setDOMContent(wrap).addTo(map);
@@ -1697,6 +1710,7 @@
       if (!db.profile) { openProfile(true); return; }
       openSiteForm(r, null);
     });
+    wrap.querySelector('[data-nav]').addEventListener('click', function () { openNav(r.addr || r.name, r.lat, r.lng); });   /* v4.5 어디고 지도·네이버·카카오·T맵 */
     wrap.querySelector('[data-sf]').addEventListener('click', function () {
       if (!db.profile) { openProfile(true); return; }
       openSafety({ name: r.kind === '장소' ? r.name : '지도에서 선택한 위치', addr: r.addr, lat: r.lat, lng: r.lng });
@@ -2082,7 +2096,7 @@
   }
 
   /* 주변정보·레이어·안전 연락 모듈이 쓰는 공용 기능 */
-  window.OdigoApp = { map: map, stopLocate: function () { if (locMode !== 'off' || meMarker) stopAll(); }, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
+  window.OdigoApp = { search: function (q) { return searchPlaces(q); }, map: map, stopLocate: function () { if (locMode !== 'off' || meMarker) stopAll(); }, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
     ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
     setPinLabels: setPinLabels, mapAppBtns: mapAppBtns, copyBtn: copyBtn, pwBox: pwBox, pwGet: pwGet, dispName: dispName, openAppOrWeb: openAppOrWeb, pinVars: pinVars, openPinSettings: function () { if (db.profile) openPinSettings(); else openProfile(true); },
     getProfile: function () { return db.profile; },
