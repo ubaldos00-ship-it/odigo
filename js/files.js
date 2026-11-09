@@ -599,5 +599,7 @@
     refresh();
   }
 
-  window.OdigoFiles = { openExport: openExport, openExcel: openExcel, template: templateFile, openTenarImport: openTenarImport, openDelete: openDelete, openTenarFile: function () { var i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json'; i.onchange = function () { var f = i.files && i.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { openTenarFile(String(rd.result)); }; rd.readAsText(f); }; i.click(); } };
+  /* v4.4 텐아르 저장 자료 읽기(평문 또는 텐아르 기기키 암호화) — 답례품 함께 보기용 */
+  function readTenarKey(k) { var raw = null; try { raw = localStorage.getItem(k); } catch (e) {} return raw ? readTenarObj(raw).catch(function () { return null; }) : Promise.resolve(null); }
+  window.OdigoFiles = { readTenarKey: readTenarKey, openExport: openExport, openExcel: openExcel, template: templateFile, openTenarImport: openTenarImport, openDelete: openDelete, openTenarFile: function () { var i = document.createElement('input'); i.type = 'file'; i.accept = 'application/json,.json'; i.onchange = function () { var f = i.files && i.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function () { openTenarFile(String(rd.result)); }; rd.readAsText(f); }; i.click(); } };
 })();

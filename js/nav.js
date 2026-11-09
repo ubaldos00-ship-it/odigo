@@ -1,4 +1,5 @@
-/* 어디고 v4.2 — 경로 「추천(고속도로+최단)」 추가·기본값
+/* 어디고 v4.3 — 안내 모드: 자동차 표시(진행 방향)·3D 기울임·차는 화면 아래쪽, 경로 위 화살표, 지나온 길 지우기, 위·아래 메뉴 숨김(안내창은 끌어서 옮기기)
+   어디고 v4.2 — 경로 「추천(고속도로+최단)」 추가·기본값
    어디고 v4.1 — 경로 고르기(고속도로 우선·최단거리·무료도로, Valhalla 공개 서버 · 실패하면 OSRM) + 음성 안내(휴대폰 내장 한국어 음성)
    어디고 v4.0 — 어디고 지도 안 길찾기 (사용자 요청 2026-11-09: 「네비게이션 보면서 전체 핀을 보고 싶다」)
    · 출발(현재 위치·지도에서 고르기·내 조사구) → 도착(조사구·지도에서 고르기·현재 위치) → 자동차 경로 선·거리·예상 시간·갈림길 안내
@@ -26,7 +27,7 @@
   function fmtT(s) { var m = Math.round(s / 60); return m < 60 ? m + '분' : Math.floor(m / 60) + '시간 ' + (m % 60) + '분'; }
 
   var st = { start: null, end: null, route: null, steps: [], idx: 0, guiding: false, watch: null, lastReroute: 0, markers: [],
-    mode: lsGet('odigo_navMode2', 'mix'), alt: {}, voice: lsGet('odigo_navVoice', '1') === '1', said: {} };
+    mode: lsGet('odigo_navMode2', 'mix'), alt: {}, ci: 0, car: null, carH: 0, prev: null, follow: true, prog: false, voice: lsGet('odigo_navVoice', '1') === '1', said: {} };
   function modeOf(id) { return MODES.filter(function (m) { return m.id === id; })[0] || MODES[0]; }
 
   /* ───── 음성 안내 (Web Speech · 한국어) ───── */
@@ -224,8 +225,54 @@
       return r;
     });
   }
+  function arrowImg() {
+    var c = document.createElement('canvas'); c.width = 44; c.height = 44; var g = c.getContext('2d');
+    g.translate(22, 22); g.lineJoin = 'round'; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-7, -11); g.lineTo(7, 0); g.lineTo(-7, 11);   /* 오른쪽(=선 방향)을 가리키는 꺾쇠 */
+    g.lineWidth = 9; g.strokeStyle = '#0b3a67'; g.stroke();
+    g.lineWidth = 5; g.strokeStyle = '#fff'; g.stroke();
+    return g.getImageData(0, 0, 44, 44);
+  }
+  /* 지나온 길 지우기: 경로에서 지금 위치와 가장 가까운 점(앞쪽으로만 찾음)부터 남은 선만 그림 */
+  function trim(la, lo) {
+    var c = st.route.coords, best = 1e9, bi = st.ci, end = Math.min(c.length, st.ci + 600);
+    for (var i = st.ci; i < end; i++) { var d = distM(la, lo, c[i][1], c[i][0]); if (d < best) { best = d; bi = i; } }
+    st.ci = bi;
+    var src = A().map.getSource('nv-route');
+    if (src) src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[lo, la]].concat(c.slice(bi + 1)) } });
+    return best;
+  }
+  function bearing(a1, o1, a2, o2) {
+    var f1 = a1 * Math.PI / 180, f2 = a2 * Math.PI / 180, dl = (o2 - o1) * Math.PI / 180;
+    return (Math.atan2(Math.sin(dl) * Math.cos(f2), Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl)) * 180 / Math.PI + 360) % 360;
+  }
+  /* 자동차 표시 (진행 방향으로 회전) */
+  function carMarker(la, lo) {
+    if (!st.car) {
+      var el = document.createElement('div'); el.className = 'nv-car';
+      el.innerHTML = '<svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="18" fill="rgba(28,126,214,.18)"/><path d="M20 5 L31 33 L20 27 L9 33 Z" fill="#1c7ed6" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg>';
+      st.car = new maplibregl.Marker({ element: el, rotationAlignment: 'map', pitchAlignment: 'map', anchor: 'center' }).setLngLat([lo, la]).addTo(A().map);
+    }
+    st.car.setLngLat([lo, la]); st.car.setRotation(st.carH);
+  }
+  /* 3D 따라가기: 기울임 55°, 진행 방향이 위, 차는 화면 아래쪽(위 여백을 크게) */
+  function camera(la, lo, quick) {
+    if (!st.follow) return;
+    var map = A().map; st.prog = true;
+    map.easeTo({ center: [lo, la], bearing: st.carH, pitch: 55, zoom: Math.max(16, Math.min(map.getZoom(), 18)), padding: { top: Math.round(window.innerHeight * 0.42), bottom: 0, left: 0, right: 0 }, duration: quick ? 400 : 900, essential: true });
+    setTimeout(function () { st.prog = false; }, quick ? 450 : 950);
+  }
+  function navMode(on) {
+    document.body.classList.toggle('nav-mode', !!on);
+    var map = A().map;
+    if (!on) {
+      if (st.car) { st.car.remove(); st.car = null; }
+      st.prog = true; map.easeTo({ pitch: 0, bearing: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 600 }); setTimeout(function () { st.prog = false; }, 650);
+      var nb = $('navBar'); nb.style.transform = '';
+    }
+  }
   function useRoute(r) {
-    st.route = r; st.steps = r.steps; st.idx = 1; st.said = {};
+    st.route = r; st.steps = r.steps; st.idx = 1; st.said = {}; st.ci = 0;
     draw();
   }
   function draw() {
@@ -235,6 +282,9 @@
       map.addSource('nv-route', { type: 'geojson', data: data });
       map.addLayer({ id: 'nv-route-case', type: 'line', source: 'nv-route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#fff', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 6, 16, 13] } });
       map.addLayer({ id: 'nv-route', type: 'line', source: 'nv-route', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#1c7ed6', 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3.5, 16, 8] } });
+      /* v4.3 경로 위 진행 방향 화살표 (중간중간) */
+      if (!map.hasImage('nv-arrow')) map.addImage('nv-arrow', arrowImg(), { pixelRatio: 2 });
+      map.addLayer({ id: 'nv-arrows', type: 'symbol', source: 'nv-route', layout: { 'symbol-placement': 'line', 'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 10, 70, 16, 120], 'icon-image': 'nv-arrow', 'icon-size': ['interpolate', ['linear'], ['zoom'], 10, .6, 16, 1], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true } });
     }
     st.markers.forEach(function (m) { m.remove(); }); st.markers = [];
     [['s', '출', st.start], ['e', '도', st.end]].forEach(function (x) {
@@ -245,24 +295,28 @@
   }
   function clearRoute() {
     var map = A().map;
-    ['nv-route', 'nv-route-case'].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
+    ['nv-arrows', 'nv-route', 'nv-route-case'].forEach(function (id) { if (map.getLayer(id)) map.removeLayer(id); });
     if (map.getSource('nv-route')) map.removeSource('nv-route');
     st.markers.forEach(function (m) { m.remove(); }); st.markers = [];
     st.route = null; st.steps = []; st.alt = {};
   }
   function fitRoute() {
     if (!st.route) return;
+    try { A().map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 }); } catch (e) {}
     var b = new maplibregl.LngLatBounds(); st.route.coords.forEach(function (c) { b.extend(c); });
     var sh = document.getElementById('sheet').hidden ? 0 : document.getElementById('sheet').getBoundingClientRect().height;
-    A().map.fitBounds(b, { padding: { top: st.guiding ? 140 : 80, left: 40, right: 70, bottom: Math.min(window.innerHeight - 220, sh + 40) }, maxZoom: 16, duration: 600 });
+    A().map.fitBounds(b, { pitch: 0, bearing: 0, padding: { top: st.guiding ? 140 : 80, left: 40, right: 70, bottom: Math.min(window.innerHeight - 220, sh + 40) }, maxZoom: 16, duration: 600 });
   }
 
   /* ───── 안내 (위쪽 막대 + 음성) ───── */
   function startGuide() {
     if (!st.route) return;
-    st.guiding = true; st.idx = 1; st.said = {};
+    st.guiding = true; st.idx = 1; st.said = {}; st.ci = 0; st.follow = true; st.prev = null;
     A().closeSheet();
-    if (!$('btnLocate').classList.contains('on')) $('btnLocate').click();   /* 내 위치 표시·따라가기 */
+    if (A().stopLocate) A().stopLocate();   /* 안내 중에는 파란 점 대신 자동차 표시 */
+    navMode(true);
+    var c0 = st.route.coords; st.carH = c0.length > 1 ? bearing(c0[0][1], c0[0][0], c0[Math.min(3, c0.length - 1)][1], c0[Math.min(3, c0.length - 1)][0]) : 0;
+    carMarker(c0[0][1], c0[0][0]); camera(c0[0][1], c0[0][0]);
     if (st.watch == null && navigator.geolocation) st.watch = navigator.geolocation.watchPosition(onPos, function () {}, { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
     bar(null);
     /* 휴대폰은 버튼을 누른 순간에 처음 말해야 음성이 열림 */
@@ -275,6 +329,7 @@
     if (st.watch != null) { try { navigator.geolocation.clearWatch(st.watch); } catch (e) {} st.watch = null; }
     if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
     $('navBar').hidden = true;
+    navMode(false);
   }
   function offRoute(la, lo) {
     var best = 1e9, c = st.route.coords;
@@ -283,7 +338,12 @@
   }
   function onPos(p) {
     if (!st.guiding || !st.route) return;
-    var la = p.coords.latitude, lo = p.coords.longitude, spd = p.coords.speed || 0;
+    var la = p.coords.latitude, lo = p.coords.longitude, spd = p.coords.speed || 0, gh = p.coords.heading;
+    /* 진행 방향: GPS 방향(움직일 때) → 없으면 직전 위치에서 5m 넘게 움직인 방향 */
+    if (gh != null && !isNaN(gh) && spd > 1) st.carH = gh;
+    else if (st.prev && distM(st.prev[0], st.prev[1], la, lo) > 5) st.carH = bearing(st.prev[0], st.prev[1], la, lo);
+    if (!st.prev || distM(st.prev[0], st.prev[1], la, lo) > 5) st.prev = [la, lo];
+    carMarker(la, lo); camera(la, lo, true);
     /* 다음 갈림길에 25m 안으로 오면 그다음으로 */
     while (st.idx < st.steps.length) {
       var m = st.steps[st.idx].loc;
@@ -292,10 +352,11 @@
     var end = st.end, left = distM(la, lo, end.lat, end.lng);
     if (left < 30) { if (!st.said.arr) { st.said.arr = 1; say('목적지 근처에 도착했습니다. 안내를 마칩니다.'); } bar(null, true); return; }
     /* 경로에서 80m 넘게 벗어나면 다시 계산 (30초에 한 번까지) */
-    if (offRoute(la, lo) > 80 && Date.now() - st.lastReroute > 30000) {
+    var off = trim(la, lo);
+    if (off > 60 && offRoute(la, lo) > 60 && Date.now() - st.lastReroute > 15000) {
       st.lastReroute = Date.now(); A().toast('경로를 벗어나 다시 계산합니다'); say('경로를 벗어나 다시 계산합니다');
       st.start = { name: '현재 위치', lat: la, lng: lo, cur: true };
-      route(st.start, st.end, st.mode, true).then(function (r) { if (r) { st.alt = {}; st.alt[st.mode] = r; useRoute(r); } bar([la, lo]); });
+      route(st.start, st.end, st.mode, true).then(function (r) { if (r) { st.alt = {}; st.alt[st.mode] = r; useRoute(r); A().toast('새 경로로 안내합니다'); } bar([la, lo]); });
       return;
     }
     /* 음성: 빠르면(시속 60km 넘게) 1km·300m 앞, 아니면 500m·150m 앞에서 한 번씩 */
@@ -314,16 +375,35 @@
     var remain = 0; for (var i = st.idx; i < st.steps.length; i++) remain += st.steps[i].distance || 0;
     if (pos) remain += dNext;
     el.innerHTML = '<div class="nv-main"><span class="nv-turn">' + t[1] + '</span><span class="nv-txt"><b>' + (arrived ? '' : fmtD(dNext) + ' 앞 ') + esc(t[0]) + '</b>' +
-      '<span class="nv-sum">' + esc(st.end.name) + ' · 남은 거리 ' + fmtD(pos ? remain : st.route.distance) + '</span></span>' +
+      '<span class="nv-sum">' + esc(st.end.name) + (arrived ? '' : ' · 남은 거리 ' + fmtD(pos ? remain : st.route.distance)) + '</span></span>' +
       '<button class="nv-voice" id="nbVoice" title="음성 안내 켜기·끄기">' + (st.voice ? '🔊' : '🔇') + '</button></div>' +
-      '<div class="row"><button class="btn" id="nbFit">경로 전체</button><button class="btn" id="nbInfo">길찾기 창</button><button class="btn danger" id="nbEnd" style="margin-left:auto">안내 끝내기</button></div>';
+      '<div class="row">' + (st.follow ? '' : '<button class="btn primary" id="nbMe">🚗 현위치</button>') + '<button class="btn" id="nbFit">경로 전체</button><button class="btn" id="nbInfo">길찾기 창</button><button class="btn danger" id="nbEnd" style="margin-left:auto">안내 끝내기</button></div>';
     el.querySelector('#nbVoice').onclick = function () { setVoice(!st.voice); this.textContent = st.voice ? '🔊' : '🔇'; };
-    el.querySelector('#nbFit').onclick = fitRoute;
+    el.querySelector('#nbFit').onclick = function () { st.follow = false; navMode(true); fitRoute(); bar(pos, arrived); };
+    var me = el.querySelector('#nbMe'); if (me) me.onclick = function () { st.follow = true; var q = st.prev || (pos ? pos : null); if (q) camera(q[0], q[1]); bar(pos, arrived); };
     el.querySelector('#nbInfo').onclick = function () { open({ noAuto: true }); };
     el.querySelector('#nbEnd').onclick = function () { stop(); clearRoute(); A().toast('안내를 끝냈습니다'); };
+    bindDrag(el);
     if (arrived) { st.guiding = false; if (st.watch != null) { try { navigator.geolocation.clearWatch(st.watch); } catch (e) {} st.watch = null; } }
   }
   if (window.speechSynthesis) try { speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = function () {}; } catch (e) {}
+
+  /* 안내창 끌어서 옮기기 (위아래로) */
+  var dragBound = false;
+  function bindDrag(el) {
+    if (dragBound) return; dragBound = true;
+    var y0 = null, t0 = 0;
+    el.addEventListener('pointerdown', function (e) { if (e.target.closest('button')) return; y0 = e.clientY; var m = /translateY\((-?[\d.]+)px\)/.exec(el.style.transform || ''); t0 = m ? +m[1] : 0; try { el.setPointerCapture(e.pointerId); } catch (x) {} });
+    el.addEventListener('pointermove', function (e) { if (y0 == null) return; var t = Math.max(0, Math.min(window.innerHeight - el.offsetHeight - 30, t0 + e.clientY - y0)); el.style.transform = 'translateY(' + t + 'px)'; });
+    function up() { y0 = null; }
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  }
+  /* 안내 중 손으로 지도를 움직이면 따라가기 멈춤 → 「🚗 현위치」로 다시 */
+  function hookMap() {
+    var map = A() && A().map; if (!map) { setTimeout(hookMap, 500); return; }
+    map.on('dragstart', function () { if (st.guiding && !st.prog && st.follow) { st.follow = false; bar(st.prev); } });
+  }
+  hookMap();
 
   window.OdigoNav = { open: open };
 })();

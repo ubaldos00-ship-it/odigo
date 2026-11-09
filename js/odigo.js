@@ -26,7 +26,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v4.2';
+  var APP_VERSION = 'v4.4';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -1271,15 +1271,33 @@
       }).join('') : '<div class="muted">찍은 필지가 없습니다.</div>') +
       '<div class="row"><button class="btn" data-act="jibun" style="flex:1">📍 지도에서 필지 찍기 (지번 표시)</button></div>';
   }
+  /* v4.4 텐아르 답례품 함께 보기: 텐아르 지도의 저장 핀(생산량) 답례품 기록(tenar_gifts_v1)을 읽어
+     어디고로 가져온 같은 핀(id = tenar:prod:<핀id>)과 합침 — 품목마다 더 나중에 저장한 기록을 씀(어디고에는 쓰지 않고 보여 주기만) */
+  var TG = {}, TFAV = [];
+  function loadTenarGifts() {
+    if (!window.OdigoFiles || !OdigoFiles.readTenarKey) return Promise.resolve();
+    return Promise.all([OdigoFiles.readTenarKey('tenar_gifts_v1'), OdigoFiles.readTenarKey('tenar_map_favs_v1')]).then(function (r) {
+      TG = r[0] && typeof r[0] === 'object' && !Array.isArray(r[0]) ? r[0] : {};
+      TFAV = Array.isArray(r[1]) ? r[1] : [];
+    }, function () {});
+  }
+  function tenarFavId(s) { var m = /^tenar:prod:(.+)$/.exec(s && s.id || ''); return m ? m[1] : null; }
+  function giftRec(s, mon, it) {
+    var own = ((s.gifts || {})[mon] || {})[it] || null, fid = tenarFavId(s);
+    var t = fid ? (((TG[fid] || {})[mon] || {})[it] || null) : null;
+    if (!t) return own;
+    if (own && (Date.parse(own.at) || 0) >= (+t.at || 0)) return own;
+    return { given: !!t.given, date: t.date || '', method: t.method || '', receiver: t.receiver || '', at: t.at, tenar: true };
+  }
   function giftsHtml(s, mon) {
-    var g = (s.gifts || {})[mon] || {};
+    var g = {}; GIFT_ITEMS.forEach(function (it) { var r = giftRec(s, mon, it); if (r) g[it] = r; });
     return '<label class="fld">🎁 답례품·수첩·달력 <input type="month" class="gm" id="giftMon" value="' + mon + '"> <small>(바꾸면 바로 저장)</small></label>' +
       GIFT_ITEMS.map(function (it) {
         var x = g[it] || {};
         return '<div class="gift-row" data-gift="' + it + '"><label class="gchk"><input type="checkbox" data-g="given"' + (x.given ? ' checked' : '') + '> <b>' + it + '</b></label>' +
           '<input type="date" class="inp sm" data-g="date" value="' + esc(x.date || '') + '">' +
           '<select class="inp sm" data-g="method"><option value="">방법</option>' + GIFT_METHODS.map(function (m) { return '<option' + (x.method === m ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>' +
-          '<input class="inp sm" data-g="receiver" placeholder="수령자" value="' + esc(x.receiver || '') + '"></div>';
+          '<input class="inp sm" data-g="receiver" placeholder="수령자" value="' + esc(x.receiver || '') + '">' + (x.tenar ? '<small class="tg-src">텐아르 기록</small>' : '') + '</div>';
       }).join('');
   }
   var giftMonth = null;
@@ -1429,6 +1447,7 @@
   /* ───────── v3.9 답례품·수첩·달력 월별 조회 ───────── */
   function openGifts(o) {
     o = o || {};
+    if (!o._tg) { loadTenarGifts().then(function () { o._tg = true; openGifts(o); }); return; }
     /* v4.0 기본 = 답례품 · 지급한 곳만 (수첩·달력은 주로 12월) · 작물재배는 답례품 없음 */
     var mon = o.mon || giftMonth || monthStr(), item = o.item != null ? o.item : '답례품', dsel = o.div != null ? o.div : '_mine', only = o.only != null ? o.only : 'given';
     var md = myDivs();
@@ -1436,10 +1455,10 @@
     var list = db.sites.filter(function (s) { return s.division && !isAreaSite(s) && inDiv(s.division); });
     var all = list.slice();
     var items = item ? [item] : GIFT_ITEMS;
-    function rec(s, it) { return ((s.gifts || {})[mon] || {})[it] || null; }
+    function rec(s, it) { return giftRec(s, mon, it); }
     if (only === 'given') list = list.filter(function (s) { return items.some(function (it) { var r = rec(s, it); return r && r.given; }); });
     if (only === 'not') list = list.filter(function (s) { return items.some(function (it) { var r = rec(s, it); return !(r && r.given); }); });
-    var cnt = {}; GIFT_ITEMS.forEach(function (it) { cnt[it] = list.filter(function (s) { var r = rec(s, it); return r && r.given; }).length; });
+    var cnt = {};
     /* 업무 순서: 농어업과 = 축비·농비·농가경제·생산량·쌀값·가축·양곡·기타농업 → 나머지 업무, 다른 과는 정해진 순서. 고른 분야의 업무는 0곳이어도 모두 표시 */
     var AGRI_ORDER = ['livecost', 'farmcost', 'farmecon', 'prod', 'rice', 'livestock', 'grain', 'etc'];
     var groups = {}, gk = [];
@@ -1450,6 +1469,20 @@
       ts.forEach(function (t) { var k = d.id + '/' + t.id; groups[k] = { d: d, t: t, list: [], total: all.filter(function (s) { return s.division === d.id && s.type === t.id; }).length }; gk.push(k); });
     });
     sortByNo(list).forEach(function (s) { var k = s.division + '/' + s.type; if (groups[k]) groups[k].list.push(s); });
+    /* v4.4 텐아르에만 있는 저장 핀(어디고로 아직 안 가져온 핀)의 답례품도 생산량에 함께 (텐아르 표시) */
+    var have = {}; db.sites.forEach(function (s) { var f = tenarFavId(s); if (f) have[f] = 1; });
+    if (groups['agri/prod']) TFAV.forEach(function (f) {
+      if (!f || !f.id || have[f.id] || !TG[f.id]) return;
+      var la = +(f.latitude != null ? f.latitude : f.lat), lo = +(f.longitude != null ? f.longitude : f.lng);
+      var v = { id: 'tg:' + f.id, tenarOnly: true, lat: la, lng: lo, name: (f.crop ? f.crop + ' · ' : '') + (f.name || f.jibunAddress || '텐아르 핀'), emd: f.jibunAddress || '' };
+      var any = items.some(function (it) { var r = ((TG[f.id] || {})[mon] || {})[it]; return r && r.given; });
+      if (only === 'given' && !any) return;
+      if (only === 'not' && items.every(function (it) { var r = ((TG[f.id] || {})[mon] || {})[it]; return r && r.given; })) return;
+      groups['agri/prod'].list.push(v); groups['agri/prod'].total++;
+      list.push(v);
+    });
+    function recAny(s, it) { return s.tenarOnly ? (((TG[s.id.slice(3)] || {})[mon] || {})[it] || null) : rec(s, it); }
+    GIFT_ITEMS.forEach(function (it) { cnt[it] = list.filter(function (s) { var r = recAny(s, it); return r && r.given; }).length; });
     var html = '<div class="gift-flt"><input type="month" class="inp" id="gfMon" value="' + mon + '">' +
       '<select class="inp" id="gfItem"><option value=""' + (item === '' ? ' selected' : '') + '>답례품·수첩·달력 모두</option>' + GIFT_ITEMS.map(function (it) { return '<option' + (it === item ? ' selected' : '') + '>' + it + '</option>'; }).join('') + '</select>' +
       '<select class="inp" id="gfDiv"><option value="_mine"' + (dsel === '_mine' ? ' selected' : '') + '>내 주요업무분야</option><option value=""' + (dsel === '' ? ' selected' : '') + '>모든 분야</option>' + DIVISIONS.map(function (d) { return '<option value="' + d.id + '"' + (dsel === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('') + '</select>' +
@@ -1461,13 +1494,17 @@
         (!G.list.length ? '<p class="muted" style="margin:4px 0 8px 14px">' + (G.total ? (only === 'given' ? '지급한 곳이 없습니다' : only === 'not' ? '모두 지급했습니다' : '') + ' (조사구 ' + G.total + '곳)' : '조사구가 없습니다') + '</p></details>' : '') +
         (!G.list.length ? '' : '<table class="gift-tb"><tr><th>조사구</th>' + items.map(function (it) { return '<th>' + it + '</th>'; }).join('') + '</tr>' +
         G.list.map(function (s) {
+          if (s.tenarOnly) return '<tr data-tg="' + s.id + '"><td><b>' + esc(s.name) + ' <span class="chip tg">텐아르</span></b><small>' + esc(s.emd) + '</small></td>' + items.map(function (it) {
+            var r = recAny(s, it);
+            return r && r.given ? '<td class="ok">✓ ' + esc((r.date || '').slice(5).replace('-', '.')) + '<small>' + esc([r.method, r.receiver].filter(Boolean).join(' · ')) + '</small></td>' : '<td class="no">–</td>';
+          }).join('') + '</tr>';
           return '<tr data-gs="' + s.id + '"><td><b>' + esc(isAreaSite(s) ? floorJosagu(s) + (noOf(s) ? ' #' + noOf(s) : '') : nameOf(s)) + '</b><small>' + esc(emdOf(s)) + '</small></td>' + items.map(function (it) {
             var r = rec(s, it);
-            return r && r.given ? '<td class="ok">✓ ' + esc((r.date || '').slice(5).replace('-', '.')) + '<small>' + esc([r.method, r.receiver].filter(Boolean).join(' · ')) + '</small></td>' : '<td class="no">–</td>';
+            return r && r.given ? '<td class="ok">✓ ' + esc((r.date || '').slice(5).replace('-', '.')) + (r.tenar ? ' <span class="chip tg">텐아르</span>' : '') + '<small>' + esc([r.method, r.receiver].filter(Boolean).join(' · ')) + '</small></td>' : '<td class="no">–</td>';
           }).join('') + '</tr>';
         }).join('') + '</table></details>');
     });
-    html += '<p class="muted">조사구를 누르면 그 위치로 이동합니다. 지급 기록은 조사구 카드 아래 「🎁 답례품·수첩·달력」에서 넣습니다.</p>';
+    html += '<p class="muted">한 번 누르면 그 위치로 이동, 한 번 더 누르면 조사구 카드가 열립니다. 지급 기록은 조사구 카드 아래 「🎁 답례품·수첩·달력」에서 넣습니다.<br>「텐아르」 표시 = 텐아르 지도에서 기록한 답례품(같은 휴대폰·같은 브라우저일 때 함께 보임). 텐아르에만 있는 핀은 텐아르 지도에서 고칩니다.</p>';
     var body = openSheet('🎁 답례품·수첩·달력', html);
     function re() { openGifts({ mon: body.querySelector('#gfMon').value || mon, item: body.querySelector('#gfItem').value, div: body.querySelector('#gfDiv').value, only: body.querySelector('#gfOnly').value }); }
     ['#gfMon', '#gfItem', '#gfDiv', '#gfOnly'].forEach(function (q) { body.querySelector(q).addEventListener('change', re); });
@@ -1475,13 +1512,21 @@
       tr.addEventListener('click', function () {
         var s = findSite(tr.getAttribute('data-gs')); if (!s) return;
         giftMonth = body.querySelector('#gfMon').value || mon;
+        if (tr.classList.contains('sel')) { openSite(s.id); return; }   /* v4.4 한 번 더 누르면 카드 */
         if (!markers[s.id]) { activeDiv = null; mapFilter = null; renderMarkers(); renderDivBtns(); }
         flyToVisible(s, map.getZoom()); blinkPin(s.id);
         body.querySelectorAll('tr.sel').forEach(function (x) { x.classList.remove('sel'); }); tr.classList.add('sel');
       });
-      tr.addEventListener('dblclick', function () { var s = findSite(tr.getAttribute('data-gs')); if (s) openSite(s.id); });
+    });
+    body.querySelectorAll('[data-tg]').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        var v = list.filter(function (x) { return x.id === tr.getAttribute('data-tg'); })[0]; if (!v || !isFinite(v.lat)) return;
+        body.querySelectorAll('tr.sel').forEach(function (x) { x.classList.remove('sel'); }); tr.classList.add('sel');
+        flyToVisible(v, map.getZoom()); toast('텐아르 지도에만 있는 핀입니다');
+      });
     });
   }
+  setTimeout(function () { loadTenarGifts(); }, 1500);   /* v4.4 카드 답례품 칸에도 텐아르 기록을 보이게 미리 읽음 */
   $('btnGift').addEventListener('click', function () { if (!db.profile) { openProfile(true); return; } openGifts(); });
 
   /* ───────── 길찾기 (외부 앱) ───────── */
@@ -2037,7 +2082,7 @@
   }
 
   /* 주변정보·레이어·안전 연락 모듈이 쓰는 공용 기능 */
-  window.OdigoApp = { map: map, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
+  window.OdigoApp = { map: map, stopLocate: function () { if (locMode !== 'off' || meMarker) stopAll(); }, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
     ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
     setPinLabels: setPinLabels, mapAppBtns: mapAppBtns, copyBtn: copyBtn, pwBox: pwBox, pwGet: pwGet, dispName: dispName, openAppOrWeb: openAppOrWeb, pinVars: pinVars, openPinSettings: function () { if (db.profile) openPinSettings(); else openProfile(true); },
     getProfile: function () { return db.profile; },

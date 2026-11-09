@@ -707,3 +707,30 @@ a.btn.ext-link { text-decoration: none; text-align: center; display: block; }
 .nv-mode b { font-size: 13px; }
 .nv-mode i { font-style: normal; font-size: 10.5px; color: #495057; line-height: 1.1; }
 .nv-mode small { font-size: 11px; }
+
+/* ───── v4.3 1. 테두리 없던 핀(세모·별·육각·오각·팔각·역삼각·십자)에 흰 테두리 ─────
+   clip-path 모양은 border 가 잘려 안 보임 → 바깥(흰색) + 안쪽 ::before(핀 색)로 테두리를 만듦, 그림자는 바깥 틀에 */
+.pin-wrap .pin.s-triangle, .pin-wrap .pin.s-star, .pin-wrap .pin.s-hexagon, .pin-wrap .pin.s-pentagon,
+.pin-wrap .pin.s-octagon, .pin-wrap .pin.s-tridown, .pin-wrap .pin.s-cross { position: relative; background: #fff; filter: none; }
+.pin-wrap .pin.s-triangle::before, .pin-wrap .pin.s-star::before, .pin-wrap .pin.s-hexagon::before, .pin-wrap .pin.s-pentagon::before,
+.pin-wrap .pin.s-octagon::before, .pin-wrap .pin.s-tridown::before, .pin-wrap .pin.s-cross::before {
+  content: ''; position: absolute; inset: 2.5px; background: var(--pc, var(--place)); clip-path: inherit; -webkit-clip-path: inherit; }
+.pin-wrap .pin.s-triangle::before { inset: 4.5px 4px 2.5px; }
+.pin-wrap .pin.s-tridown::before { inset: 2.5px 4px 4.5px; }
+.pin-wrap .pin.s-star::before { inset: 3.5px; }
+.pin-wrap .pin.s-triangle i, .pin-wrap .pin.s-star i, .pin-wrap .pin.s-hexagon i, .pin-wrap .pin.s-pentagon i,
+.pin-wrap .pin.s-octagon i, .pin-wrap .pin.s-tridown i, .pin-wrap .pin.s-cross i { position: relative; z-index: 1; }
+.pin-wrap.w-triangle, .pin-wrap.w-star, .pin-wrap.w-hexagon, .pin-wrap.w-pentagon, .pin-wrap.w-octagon, .pin-wrap.w-tridown, .pin-wrap.w-cross { filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.55)); }
+.pin-wrap .pin.s-triangle.today, .pin-wrap .pin.s-star.today { background: var(--today); filter: none; }
+
+/* ───── v4.3 안내 모드: 위(어디고·검색·레이어)·아래(오늘 방문·내 조사 장소·출장) 숨기고 지도를 넓게, 안내창은 맨 위(끌어서 이동) ───── */
+body.nav-mode .topbar, body.nav-mode .bottombar, body.nav-mode .counter-strip, body.nav-mode .div-col,
+body.nav-mode .gps-status, body.nav-mode .ly-panel { display: none !important; }
+body.nav-mode .nav-bar { top: calc(8px + env(safe-area-inset-top, 0px)); touch-action: none; cursor: grab; }
+body.nav-mode .nav-bar::before { content: ''; display: block; width: 44px; height: 5px; border-radius: 3px; background: #ced4da; margin: -2px auto 6px; }
+body.nav-mode .fab-col { bottom: calc(18px + var(--safe-b)); }
+.nv-car { width: 40px; height: 40px; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
+
+/* v4.4 텐아르 답례품 함께 보기 */
+.chip.tg { background: #e6fcf5; color: #087f5b; border: 1px solid #63e6be; font-size: 10.5px; padding: 0 5px; border-radius: 8px; font-weight: 800; }
+.tg-src { grid-column: 1 / -1; color: #087f5b; font-size: 11.5px; font-weight: 700; }
