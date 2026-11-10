@@ -26,7 +26,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v4.5';
+  var APP_VERSION = 'v4.6';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -1450,23 +1450,31 @@
     if (!o._tg) { loadTenarGifts().then(function () { o._tg = true; openGifts(o); }); return; }
     /* v4.0 기본 = 답례품 · 지급한 곳만 (수첩·달력은 주로 12월) · 작물재배는 답례품 없음 */
     var mon = o.mon || giftMonth || monthStr(), item = o.item != null ? o.item : '답례품', dsel = o.div != null ? o.div : '_mine', only = o.only != null ? o.only : 'given';
+    var gtype = o.gtype != null ? o.gtype : '';   /* [v4.6] 업무 직접 선택 — "분야id/업무id" 조합키('' = 모든 업무) */
     var md = myDivs();
     function inDiv(id) { return dsel === '_mine' ? (!md.length || md.indexOf(id) >= 0) : (!dsel || id === dsel); }
-    var list = db.sites.filter(function (s) { return s.division && !isAreaSite(s) && inDiv(s.division); });
+    /* [v4.6] 업무 순서(농어업) — 업무 콤보·그룹 정렬 공용 */
+    var AGRI_ORDER = ['livecost', 'farmcost', 'farmecon', 'prod', 'rice', 'livestock', 'grain', 'etc'];
+    /* [v4.6] 현재 분야 범위의 업무만 유효 — 범위 밖 업무키는 무효화(모든 업무로) */
+    var _scopeDivs = DIVISIONS.filter(function (d) { return inDiv(d.id); });
+    var _validType = {};
+    _scopeDivs.forEach(function (d) { d.types.forEach(function (t) { if (!(d.id === 'agri' && t.id === 'area')) _validType[d.id + '/' + t.id] = 1; }); });
+    if (gtype && !_validType[gtype]) gtype = '';
+    function inGType(s) { return !gtype || (s.division + '/' + s.type) === gtype; }
+    var list = db.sites.filter(function (s) { return s.division && !isAreaSite(s) && inDiv(s.division) && inGType(s); });
     var all = list.slice();
     var items = item ? [item] : GIFT_ITEMS;
     function rec(s, it) { return giftRec(s, mon, it); }
     if (only === 'given') list = list.filter(function (s) { return items.some(function (it) { var r = rec(s, it); return r && r.given; }); });
     if (only === 'not') list = list.filter(function (s) { return items.some(function (it) { var r = rec(s, it); return !(r && r.given); }); });
     var cnt = {};
-    /* 업무 순서: 농어업과 = 축비·농비·농가경제·생산량·쌀값·가축·양곡·기타농업 → 나머지 업무, 다른 과는 정해진 순서. 고른 분야의 업무는 0곳이어도 모두 표시 */
-    var AGRI_ORDER = ['livecost', 'farmcost', 'farmecon', 'prod', 'rice', 'livestock', 'grain', 'etc'];
+    /* 업무 순서: 농어업과 = 축비·농비·농가경제·생산량·쌀값·가축·양곡·기타농업 → 나머지 업무, 다른 과는 정해진 순서. 고른 분야의 업무는 0곳이어도 모두 표시. [v4.6] 업무 콤보로 고른 업무가 있으면 그 업무만 */
     var groups = {}, gk = [];
     DIVISIONS.forEach(function (d) {
       if (!inDiv(d.id)) return;
       var ts = d.types.filter(function (t) { return !(d.id === 'agri' && t.id === 'area'); });
       if (d.id === 'agri') ts.sort(function (a, b) { var ia = AGRI_ORDER.indexOf(a.id), ib = AGRI_ORDER.indexOf(b.id); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
-      ts.forEach(function (t) { var k = d.id + '/' + t.id; groups[k] = { d: d, t: t, list: [], total: all.filter(function (s) { return s.division === d.id && s.type === t.id; }).length }; gk.push(k); });
+      ts.forEach(function (t) { var k = d.id + '/' + t.id; if (gtype && k !== gtype) return; groups[k] = { d: d, t: t, list: [], total: all.filter(function (s) { return s.division === d.id && s.type === t.id; }).length }; gk.push(k); });
     });
     sortByNo(list).forEach(function (s) { var k = s.division + '/' + s.type; if (groups[k]) groups[k].list.push(s); });
     /* v4.4 텐아르에만 있는 저장 핀(어디고로 아직 안 가져온 핀)의 답례품도 생산량에 함께 (텐아르 표시) */
@@ -1483,9 +1491,17 @@
     });
     function recAny(s, it) { return s.tenarOnly ? (((TG[s.id.slice(3)] || {})[mon] || {})[it] || null) : rec(s, it); }
     GIFT_ITEMS.forEach(function (it) { cnt[it] = list.filter(function (s) { var r = recAny(s, it); return r && r.given; }).length; });
+    /* [v4.6] 업무 선택 콤보 옵션 — 현재 분야 범위의 업무들(여러 분야면 분야명 접두) */
+    var _multiD = _scopeDivs.length > 1, _gtOpts = '';
+    _scopeDivs.forEach(function (d) {
+      var ts = d.types.filter(function (t) { return !(d.id === 'agri' && t.id === 'area'); });
+      if (d.id === 'agri') ts.sort(function (a, b) { var ia = AGRI_ORDER.indexOf(a.id), ib = AGRI_ORDER.indexOf(b.id); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
+      ts.forEach(function (t) { var k = d.id + '/' + t.id; _gtOpts += '<option value="' + k + '"' + (gtype === k ? ' selected' : '') + '>' + esc((_multiD ? d.short + ' · ' : '') + t.name) + '</option>'; });
+    });
     var html = '<div class="gift-flt"><input type="month" class="inp" id="gfMon" value="' + mon + '">' +
       '<select class="inp" id="gfItem"><option value=""' + (item === '' ? ' selected' : '') + '>답례품·수첩·달력 모두</option>' + GIFT_ITEMS.map(function (it) { return '<option' + (it === item ? ' selected' : '') + '>' + it + '</option>'; }).join('') + '</select>' +
       '<select class="inp" id="gfDiv"><option value="_mine"' + (dsel === '_mine' ? ' selected' : '') + '>내 주요업무분야</option><option value=""' + (dsel === '' ? ' selected' : '') + '>모든 분야</option>' + DIVISIONS.map(function (d) { return '<option value="' + d.id + '"' + (dsel === d.id ? ' selected' : '') + '>' + esc(d.name) + '</option>'; }).join('') + '</select>' +
+      '<select class="inp" id="gfType"><option value=""' + (gtype === '' ? ' selected' : '') + '>모든 업무</option>' + _gtOpts + '</select>' +
       '<select class="inp" id="gfOnly"><option value=""' + (only === '' ? ' selected' : '') + '>전체 조사구</option><option value="given"' + (only === 'given' ? ' selected' : '') + '>지급한 곳만</option><option value="not"' + (only === 'not' ? ' selected' : '') + '>아직 안 준 곳만</option></select></div>' +
       '<div class="gift-sum">' + mon.replace('-', '년 ') + '월 · 조사구 ' + list.length + '곳 · ' + GIFT_ITEMS.map(function (it) { return it + ' <b>' + cnt[it] + '</b>'; }).join(' · ') + '</div>';
     gk.forEach(function (k) {
@@ -1506,8 +1522,8 @@
     });
     html += '<p class="muted">한 번 누르면 그 위치로 이동, 한 번 더 누르면 조사구 카드가 열립니다. 지급 기록은 조사구 카드 아래 「🎁 답례품·수첩·달력」에서 넣습니다.<br>「텐아르」 표시 = 텐아르 지도에서 기록한 답례품(같은 휴대폰·같은 브라우저일 때 함께 보임). 텐아르에만 있는 핀은 텐아르 지도에서 고칩니다.</p>';
     var body = openSheet('🎁 답례품·수첩·달력', html);
-    function re() { openGifts({ mon: body.querySelector('#gfMon').value || mon, item: body.querySelector('#gfItem').value, div: body.querySelector('#gfDiv').value, only: body.querySelector('#gfOnly').value }); }
-    ['#gfMon', '#gfItem', '#gfDiv', '#gfOnly'].forEach(function (q) { body.querySelector(q).addEventListener('change', re); });
+    function re() { openGifts({ mon: body.querySelector('#gfMon').value || mon, item: body.querySelector('#gfItem').value, div: body.querySelector('#gfDiv').value, gtype: body.querySelector('#gfType').value, only: body.querySelector('#gfOnly').value }); }
+    ['#gfMon', '#gfItem', '#gfDiv', '#gfType', '#gfOnly'].forEach(function (q) { body.querySelector(q).addEventListener('change', re); });
     body.querySelectorAll('[data-gs]').forEach(function (tr) {
       tr.addEventListener('click', function () {
         var s = findSite(tr.getAttribute('data-gs')); if (!s) return;
@@ -1595,10 +1611,16 @@
               var road = x.road_address && x.road_address.address_name, jibun = x.address && x.address.address_name;
               return { kind: '주소', name: x.address_name, addr: road && jibun && road !== jibun ? (road + ' · ' + jibun) : (road || jibun || ''), lat: +x.y, lng: +x.x };
             }) : []);
-          });
+          }, { size: 30 });
         } catch (e) { res([]); }
       });
-      return Promise.all([addrs, pl]).then(function (a) { return a[0].concat(a[1]); });
+      return Promise.all([addrs, pl]).then(function (a) {
+        /* [v4.6] 가까운 순 정렬 — 같은 지번/도로명이 여러 시군에 있을 때(예: 평천리 992 = 태안읍·공성면)
+           지도 중심에서 가까운 곳부터 보이게. 주소·장소 각각 거리순(주소 먼저). 검색·길찾기(nav) 공통. */
+        function d2(x) { var dx = (x.lng - c.lng) * Math.cos(c.lat * Math.PI / 180), dy = x.lat - c.lat; return dx * dx + dy * dy; }
+        var byDist = function (p, q) { return d2(p) - d2(q); };
+        return a[0].slice().sort(byDist).concat(a[1].slice().sort(byDist));
+      });
     });
   }
   /* 좌표 → 행정동(H) 1·2단계 (범죄 통계 시군구 연결용 — 조사구 분류는 법정동 B를 씀) */

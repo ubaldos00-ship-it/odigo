@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- 어디고 odigo v4.5 (2026-11-09) 지도 콕 누른 팝업에 「🚗 길찾기」(어디고 지도·네이버·카카오·T맵), 검색창 옆 🧭 동작(고른 위치 → 그곳으로, 검색어 → 검색해서 도착지 고르기), 길찾기 출발·도착 「🔍 검색」, 안내 아래쪽 남은 시간·남은 거리·도착 예정, 잘못된 경로 재탐색 고침, 단속카메라·과속방지턱 표시·음성(OSM + 공공데이터 파일 준비) -->
+<!-- 어디고 odigo v4.6 (2026-11-10) ①지도·길찾기 검색에서 같은 지번/도로명이 여러 시군에 있으면 가까운 순으로 보이게(예: 평천리 992=태안읍·공성면) — kakaoSearch 주소·장소 결과를 지도 중심 거리순 정렬, 주소 size 30(검색창·길찾기 공통). ②검색창 넓힘 — 🧭 길찾기+레이어 버튼을 한 묶음(세그먼트)으로 합치고 로고·간격 축소. ③🎁 답례품 버튼을 우측 세로줄 가운데(🧭주변정보↔📍내위치)로 이동. ④답례품 화면에 「업무」 선택 콤보 추가(생산량·쌀값·농판·축비·가축·농비·기타농업 등 업무만 골라 보기, 분야 범위 내 업무만·건수 함께). ※ 계산·저장·지도 로직 무변경. -->
+<!-- (이전) 어디고 odigo v4.5 (2026-11-09) 지도 콕 누른 팝업에 「🚗 길찾기」(어디고 지도·네이버·카카오·T맵), 검색창 옆 🧭 동작(고른 위치 → 그곳으로, 검색어 → 검색해서 도착지 고르기), 길찾기 출발·도착 「🔍 검색」, 안내 아래쪽 남은 시간·남은 거리·도착 예정, 잘못된 경로 재탐색 고침, 단속카메라·과속방지턱 표시·음성(OSM + 공공데이터 파일 준비) -->
 <!-- (이전) 어디고 odigo v4.4 (2026-11-09) 텐아르 답례품 함께 보기 — 텐아르 지도 저장 핀(생산량)의 답례품 기록(tenar_gifts_v1, 텐아르 기기키 암호화)을 읽어 답례품 화면·조사구 카드에 「텐아르」 표시로 함께 보여 줌(품목마다 더 나중 기록), 텐아르에만 있는 핀도 생산량에 표시, 답례품 화면 한 번 누르면 이동·두 번이면 카드 -->
 <!-- (이전) 어디고 odigo v4.3 (2026-11-09) 테두리 없던 핀(세모·별·육각·오각·팔각·역삼각·십자)에 흰 테두리, 길 안내 모드: 자동차 표시(진행 방향)·3D 기울임·차를 화면 아래쪽에, 경로 위 방향 화살표, 지나온 길 지우기, 벗어나면 다시 탐색(60m·15초), 위·아래 메뉴 숨김·안내창 끌어서 옮기기 -->
 <!-- (이전) 어디고 odigo v4.2 (2026-11-09) 길찾기 경로 「추천(고속도로+최단)」 추가·기본값 (고속도로 우선 + 거리 비중 0.7) -->
@@ -62,7 +63,7 @@
 <meta name="application-name" content="어디고">
 <meta name="theme-color" content="#f07a22">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
-<link rel="stylesheet" href="css/odigo.css?v=4.5">
+<link rel="stylesheet" href="css/odigo.css?v=4.6">
 </head>
 <body>
 
@@ -73,10 +74,12 @@
     <input id="searchInput" type="search" placeholder="장소·주소 검색 (예: 고령군청, 대가야읍 지산리 123)" enterkeyhint="search">
     <button type="submit" aria-label="검색">검색</button>
   </form>
-  <button id="btnRoute" class="lp-btn" type="button" title="어디고 길찾기" aria-label="길찾기">🧭</button>
-  <button id="btnLayer" class="lp-btn" type="button" title="레이어" aria-label="레이어">
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3.2 2.6 8.1l9.4 4.9 9.4-4.9L12 3.2Z" fill="currentColor"/><path d="M4.9 11.4 2.6 12.6l9.4 4.9 9.4-4.9-2.3-1.2-7.1 3.7-7.1-3.7Z" fill="currentColor"/><path d="M4.9 15.9 2.6 17.1 12 22l9.4-4.9-2.3-1.2-7.1 3.7-7.1-3.7Z" fill="currentColor"/></svg>
-  </button>
+  <div class="tb-tools">
+    <button id="btnRoute" class="lp-btn" type="button" title="어디고 길찾기" aria-label="길찾기">🧭</button>
+    <button id="btnLayer" class="lp-btn" type="button" title="레이어" aria-label="레이어">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M12 3.2 2.6 8.1l9.4 4.9 9.4-4.9L12 3.2Z" fill="currentColor"/><path d="M4.9 11.4 2.6 12.6l9.4 4.9 9.4-4.9-2.3-1.2-7.1 3.7-7.1-3.7Z" fill="currentColor"/><path d="M4.9 15.9 2.6 17.1 12 22l9.4-4.9-2.3-1.2-7.1 3.7-7.1-3.7Z" fill="currentColor"/></svg>
+    </button>
+  </div>
 </header>
 
 <!-- 레이어 패널 (헤더 고정 · 항목만 스크롤) -->
@@ -116,8 +119,8 @@
 
 <!-- 지도 오른쪽 버튼 -->
 <div class="fab-col">
-  <button id="btnGift" class="fab gift" title="답례품·수첩·달력"><span>🎁</span><small>답례품</small></button>
   <button id="btnNearby" class="fab" title="주변정보"><span>🧭</span><small>주변정보</small></button>
+  <button id="btnGift" class="fab gift" title="답례품·수첩·달력"><span>🎁</span><small>답례품</small></button>
   <button id="btnLocate" class="fab" title="내 위치"><span>📍</span><small>내 위치</small></button>
 </div>
 
@@ -151,12 +154,12 @@
 <div id="gpsStatus" class="gps-status" hidden></div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
-<script src="js/nearby.js?v=4.5"></script>
-<script src="js/store.js?v=4.5"></script>
-<script src="js/odigo.js?v=4.5"></script>
-<script src="js/layers.js?v=4.5"></script>
-<script src="js/safety.js?v=4.5"></script>
-<script src="js/files.js?v=4.5"></script>
-<script src="js/nav.js?v=4.5"></script>
+<script src="js/nearby.js?v=4.6"></script>
+<script src="js/store.js?v=4.6"></script>
+<script src="js/odigo.js?v=4.6"></script>
+<script src="js/layers.js?v=4.6"></script>
+<script src="js/safety.js?v=4.6"></script>
+<script src="js/files.js?v=4.6"></script>
+<script src="js/nav.js?v=4.6"></script>
 </body>
 </html>
