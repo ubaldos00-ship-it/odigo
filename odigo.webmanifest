@@ -1,8 +1,9 @@
 {
   "name": "어디고 · 위치 현장조사지원",
   "short_name": "어디고",
-  "start_url": "./index.html",
-  "scope": "./",
+  "id": "/odigo/",
+  "start_url": "/odigo/index.html",
+  "scope": "/odigo/",
   "display": "standalone",
   "background_color": "#f1f6f4",
   "theme_color": "#f07a22",
