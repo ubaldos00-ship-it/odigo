@@ -26,7 +26,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v4.6';
+  var APP_VERSION = 'v5.0';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -210,6 +210,20 @@
   var notSavedShown = 0;
   function warnNotSaved() { if (Date.now() - notSavedShown > 8000) { notSavedShown = Date.now(); toast('지금은 이 기기에 저장되지 않습니다 (ⓘ에서 확인)'); } }
   if (window.OdigoStore) OdigoStore.onError = function () { toast('이 기기에 저장하지 못했습니다 (저장공간·사생활 보호 모드 확인)'); };
+  /* v5.0 다른 탭(창)에서 바뀐 기록을 이 화면에 반영 · conflict = 이 탭 변경이 다른 탭 변경과 겹쳐 저장하지 않음 */
+  var remoteToastAt = 0;
+  if (window.OdigoStore) OdigoStore.onRemote = function (list, conflict) {
+    list.forEach(function (x) {
+      if (x.store === 'kv') { if (x.id === 'profile') db.profile = x.value; return; }
+      var arr = x.store === 'sites' ? db.sites : x.store === 'visits' ? db.visits : null; if (!arr) return;
+      for (var i = 0; i < arr.length; i++) if (String(arr[i].id) === String(x.id)) break;
+      if (x.value == null) { if (i < arr.length) arr.splice(i, 1); }
+      else if (i < arr.length) arr[i] = x.value; else arr.push(x.value);
+    });
+    renderMarkers(); updateCounts(); renderDivBtns();
+    if (conflict) toast('다른 창에서 먼저 바꾼 내용이 있어 그 내용으로 맞췄습니다. 방금 고친 것을 확인해 주세요');
+    else if (Date.now() - remoteToastAt > 10000) { remoteToastAt = Date.now(); toast('다른 창에서 바꾼 내용을 반영했습니다'); }
+  };
 
   function findSite(id) { for (var i = 0; i < db.sites.length; i++) if (db.sites[i].id === id) return db.sites[i]; return null; }
   function visitsOf(siteId) { return db.visits.filter(function (v) { return v.siteId === siteId; }); }
@@ -1933,8 +1947,9 @@
   function storeNotice() {
     if (storeStatus === 'nocrypto') return '<p class="warn">이 브라우저는 암호화 저장을 쓸 수 없어 <b>저장하지 않습니다</b> (사생활 보호 모드·오래된 브라우저). 일반 모드의 Safari·Chrome에서 열어 주세요.</p>';
     if (storeStatus === 'keylost') return '<p class="warn">이 기기의 암호 열쇠가 없어져 저장된 자료를 열 수 없습니다(브라우저 데이터 정리 등). 열 수 없는 자료는 지우지 않고 보관 중입니다. <b>백업 파일 불러오기</b>로 되살리거나 새로 시작하세요.</p><div class="row"><button class="btn" id="stOver">새로 시작 (열 수 없는 자료는 보관)</button></div>';
-    if (storeStatus === 'migratefail') return '<p class="warn">v2.3 자료를 새 형식으로 옮기지 못했습니다. 기존 자료는 그대로 있습니다. 지금은 보기만 되고 저장되지 않습니다. 새로 고침해 다시 시도해 주세요.</p>';
-    return '<p class="muted">조사구·메모·방문 기록·내 설정은 <b>이 기기 브라우저에만 암호화해서</b> 저장되며 서버로 보내지 않습니다. 브라우저 데이터를 지우면 함께 지워지니 백업 파일을 저장해 두세요.</p>';
+    if (storeStatus === 'legacyfail') return '<p class="warn">v2.3 자료를 새 형식으로 옮기지 못했습니다. 기존 자료는 그대로 있습니다. 지금은 보기만 되고 저장되지 않습니다. 새로 고침해 다시 시도해 주세요.</p>';
+    var mf = storeStatus === 'migratefail' ? '<p class="warn">새 저장소(IndexedDB)로 옮기지 못해 <b>예전 방식(localStorage)으로 저장 중</b>입니다. 자료는 그대로이며 다음에 열 때 다시 옮깁니다. 계속되면 백업 파일을 저장해 두세요.</p>' : '';
+    return mf + '<p class="muted">조사구·메모·방문 기록·내 설정은 <b>이 기기 브라우저에만 암호화해서</b> 저장되며 서버로 보내지 않습니다. 브라우저 데이터를 지우면 함께 지워지니 백업 파일을 저장해 두세요.</p><p class="muted" id="stInfo"></p>';
   }
   $('btnInfo').addEventListener('click', function () {
     var body = openSheet('ⓘ 어디고 정보',
@@ -1954,6 +1969,15 @@
       '<p class="muted">백업·공유 파일 암호는 만들 때 직접 정합니다(2번 입력). 받는 사람에게 암호는 파일과 따로 알려 주세요. 예전 파일(공통 암호 2026·v2.3 백업)도 불러올 수 있습니다.</p>' +
       '<p class="muted">배경지도 © VWorld(국토교통부) · 검색 © Kakao · 주변정보는 각 화면에 출처 표시</p>' +
       '<p class="muted">최초 빌드 2026.11.5 · by <b>Mr. Hyun</b> · <a href="https://ubaldos00-ship-it.github.io/" target="_blank" rel="noopener">텐두어 바로가기</a></p>');
+    /* v5.0 저장소 상태: 방식·사용량·보호·마지막 백업 */
+    var si = body.querySelector('#stInfo');
+    if (si && OdigoStore.storageInfo) Promise.all([OdigoStore.storageInfo(), OdigoStore.backupInfo()]).then(function (r) {
+      var o = r[0] || {}, b = r[1], mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; };
+      si.innerHTML = '저장 방식: <b>' + (o.mode === 'idb' ? 'IndexedDB (기록별 암호화)' : '예전 방식') + '</b>' +
+        (o.usage != null ? ' · 사용 ' + mb(o.usage) + (o.quota ? ' / 가능 ' + mb(o.quota) : '') : '') +
+        ' · 지우기 보호 ' + (o.persisted ? '켜짐' : '꺼짐(브라우저가 정함)') +
+        ' · 마지막 백업 ' + (b && b.at ? new Date(b.at).toLocaleDateString('ko-KR') : '없음');
+    });
     var so = body.querySelector('#stOver');
     if (so) so.addEventListener('click', function () {
       if (!confirm('새로 시작할까요? 열 수 없는 자료는 지우지 않고 따로 보관합니다.')) return;
@@ -1999,6 +2023,7 @@
       var pw = pwGet(body, 'bkPw'); if (!pw) return;
       OdigoStore.exportFile({ sites: db.sites, visits: db.visits, profile: db.profile }, { division: 'all', sites: db.sites.length, visits: db.visits.length }, APP_VERSION, pw).then(function (o) {
         download(o, 'odigo_backup_' + todayStr() + '.json'); toast('백업 파일을 저장했습니다'); closeSheet();
+        if (OdigoStore.markBackup) OdigoStore.markBackup();
       }, function () { toast('백업 파일을 만들지 못했습니다'); });
     });
   }
@@ -2154,14 +2179,30 @@
       });
     } };
 
+  /* v5.0 백업 알림: 조사구가 있고 마지막 백업이 없거나 14일 넘으면 하루 한 번 */
+  function backupRemind() {
+    if (!window.OdigoStore || !OdigoStore.backupInfo || !db.sites.length) return;
+    var day = todayStr(); try { if (localStorage.getItem('odigo_bk_remind') === day) return; } catch (e) {}
+    OdigoStore.backupInfo().then(function (b) {
+      var days = b && b.at ? Math.floor((Date.now() - b.at) / 86400000) : null;
+      if (days != null && days < 14) return;
+      try { localStorage.setItem('odigo_bk_remind', day); } catch (e) {}
+      setTimeout(function () { toast(days == null ? '백업 파일이 아직 없습니다 · ⓘ › 💾 전체 백업 저장' : '마지막 백업 ' + days + '일 전 · ⓘ › 💾 전체 백업 저장'); }, 2500);
+    });
+  }
+
   /* ───────── 시작: 암호화 저장소 열기 ───────── */
   function start() {
     if (!window.OdigoStore) { storeStatus = 'nocrypto'; ready = true; toast('저장 모듈을 불러오지 못했습니다'); return; }
     OdigoStore.open(todayStr()).then(function (r) {
       db = r.data; storeStatus = r.status; ready = true;
       renderMarkers(); updateCounts(); renderDivBtns();
-      if (r.status === 'migrated') toast('v2.3 자료 ' + r.count + '곳을 암호화 저장으로 옮겼습니다');
-      if (r.status === 'nocrypto' || r.status === 'keylost' || r.status === 'migratefail') { $('btnInfo').click(); return; }
+      if (r.status === 'migrated') toast('저장소를 새 방식으로 옮겼습니다 · 조사구 ' + r.count + '곳 · 방문 ' + r.visits + '건 (모두 대조 확인)');
+      if (r.status === 'migrated23') toast('v2.3 자료 ' + r.count + '곳을 암호화 저장으로 옮겼습니다');
+      if (r.status === 'migratefail') toast('새 저장소로 옮기지 못해 예전 방식으로 저장합니다 (자료는 그대로)');
+      if (r.unreadable) toast('열 수 없는 기록 ' + r.unreadable + '건은 지우지 않고 보관 중입니다');
+      if (r.status === 'nocrypto' || r.status === 'keylost' || r.status === 'legacyfail') { $('btnInfo').click(); return; }
+      backupRemind();
       if (!db.profile && !OPENED_BY_PIN) openProfile(true);
       refillRegions(false);
     });
