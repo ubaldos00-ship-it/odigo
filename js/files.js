@@ -109,7 +109,11 @@
       var visits = T.visits().filter(function (x) { return ids[x.siteId]; });
       var nick = (T.profile() || {}).nickname || '';
       var scope = { division: sc.div, type: sc.type, crop: sc.crop, title: scopeTitle(sc), sites: p.length, visits: visits.length, from: nick, picked: !!pickEl.checked };
-      return window.OdigoStore.exportFile({ sites: p, visits: visits }, scope, T.APP_VERSION, pw).then(function (obj) {
+      /* v5.1 고른 조사구의 조사표만 함께 (범위 밖 조사표는 넣지 않음) */
+      return (window.OdigoStore.surveyExport ? window.OdigoStore.surveyExport(Object.keys(ids)) : Promise.resolve([])).then(function (sv) {
+        scope.surveys = sv.length;
+        return window.OdigoStore.exportFile({ sites: p, visits: visits, surveys: sv }, scope, T.APP_VERSION, pw);
+      }).then(function (obj) {
         var name = 'odigo_' + safeName(scope.title.replace(/ › /g, '_')) + '_' + p.length + '건_' + today() + '.json';
         var text = '[어디고 자료] ' + nick + ' · ' + scope.title + ' ' + p.length + '건\n파일 암호는 따로 알려 드립니다 · 어디고 ⓘ › 자료 파일 가져오기로 여세요\nhttps://ubaldos00-ship-it.github.io/odigo/';
         return { obj: obj, name: name, text: text };

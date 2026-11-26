@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- 어디고 odigo v5.0 (2026-11-26) 저장소를 IndexedDB 하나(odigo_db)로 옮김 — 키와 자료를 같은 DB에, 조사구·방문·설정을 기록마다 따로 암호화, 바뀐 기록만 저장(한 트랜잭션), 처음 열 때 예전 자료(localStorage odigo_vault_v2)를 옮긴 뒤 모든 기록을 다시 읽어 대조하고 맞을 때만 사용(실패하면 예전 방식으로 계속·자료 보존, 예전 자료 30일 보관), 다른 탭 변경 반영·같은 기록 동시 수정 시 덮어쓰지 않고 알림, 브라우저 저장소 지우기 보호 요청, 백업 알림(14일), ⓘ에 저장 방식·사용량·마지막 백업 표시. 화면·기능 변경 없음 -->
+<!-- 어디고 odigo v5.1 (2026-11-26) 조사표 1단계 — 핀 카드 「📋 조사표」(조사 대상 기간·상태 미작성/작성 중/완료·조사표 열기·이전 기록), 운영 일정(가축동향 3·9월, 축비·농비·농가경제 매월, 생산량 연 1회), 2026년 가축동향조사표 3종(돼지 표본·닭 전수·오리 전수) 작성·임시저장·완료 검증·자동 합계, 같은 핀·업무·기간은 한 건(중복 없음), 저장 안 한 입력 보관, 다른 창 동시 수정 충돌 알림, 조사표 저장소(IndexedDB surveys, 기록별 암호화), 백업·업무별 공유·가져오기에 조사표 포함(충돌은 기존 유지), 핀 삭제 시 조사표도 삭제, 내 조사구 찾기에 연락처 이름·전화번호 일부·농장명·층·조사구·축종·작물(전화번호·연락처 이름은 카카오로 보내지 않음) -->
+<!-- (이전) 어디고 odigo v5.0 (2026-11-26) 저장소를 IndexedDB 하나(odigo_db)로 옮김 — 키와 자료를 같은 DB에, 조사구·방문·설정을 기록마다 따로 암호화, 바뀐 기록만 저장(한 트랜잭션), 처음 열 때 예전 자료(localStorage odigo_vault_v2)를 옮긴 뒤 모든 기록을 다시 읽어 대조하고 맞을 때만 사용(실패하면 예전 방식으로 계속·자료 보존, 예전 자료 30일 보관), 다른 탭 변경 반영·같은 기록 동시 수정 시 덮어쓰지 않고 알림, 브라우저 저장소 지우기 보호 요청, 백업 알림(14일), ⓘ에 저장 방식·사용량·마지막 백업 표시. 화면·기능 변경 없음 -->
 <!-- (이전) 어디고 odigo v4.6 (2026-11-10) ①지도·길찾기 검색에서 같은 지번/도로명이 여러 시군에 있으면 가까운 순으로 보이게(예: 평천리 992=태안읍·공성면) — kakaoSearch 주소·장소 결과를 지도 중심 거리순 정렬, 주소 size 30(검색창·길찾기 공통). ②검색창 넓힘 — 🧭 길찾기+레이어 버튼을 한 묶음(세그먼트)으로 합치고 로고·간격 축소. ③🎁 답례품 버튼을 우측 세로줄 가운데(🧭주변정보↔📍내위치)로 이동. ④답례품 화면에 「업무」 선택 콤보 추가(생산량·쌀값·농판·축비·가축·농비·기타농업 등 업무만 골라 보기, 분야 범위 내 업무만·건수 함께). ※ 계산·저장·지도 로직 무변경. -->
 <!-- (이전) 어디고 odigo v4.5 (2026-11-09) 지도 콕 누른 팝업에 「🚗 길찾기」(어디고 지도·네이버·카카오·T맵), 검색창 옆 🧭 동작(고른 위치 → 그곳으로, 검색어 → 검색해서 도착지 고르기), 길찾기 출발·도착 「🔍 검색」, 안내 아래쪽 남은 시간·남은 거리·도착 예정, 잘못된 경로 재탐색 고침, 단속카메라·과속방지턱 표시·음성(OSM + 공공데이터 파일 준비) -->
 <!-- (이전) 어디고 odigo v4.4 (2026-11-09) 텐아르 답례품 함께 보기 — 텐아르 지도 저장 핀(생산량)의 답례품 기록(tenar_gifts_v1, 텐아르 기기키 암호화)을 읽어 답례품 화면·조사구 카드에 「텐아르」 표시로 함께 보여 줌(품목마다 더 나중 기록), 텐아르에만 있는 핀도 생산량에 표시, 답례품 화면 한 번 누르면 이동·두 번이면 카드 -->
@@ -64,7 +65,7 @@
 <meta name="application-name" content="어디고">
 <meta name="theme-color" content="#f07a22">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
-<link rel="stylesheet" href="css/odigo.css?v=5.0">
+<link rel="stylesheet" href="css/odigo.css?v=5.1">
 </head>
 <body>
 
@@ -155,12 +156,13 @@
 <div id="gpsStatus" class="gps-status" hidden></div>
 
 <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
-<script src="js/nearby.js?v=5.0"></script>
-<script src="js/store.js?v=5.0"></script>
-<script src="js/odigo.js?v=5.0"></script>
-<script src="js/layers.js?v=5.0"></script>
-<script src="js/safety.js?v=5.0"></script>
-<script src="js/files.js?v=5.0"></script>
-<script src="js/nav.js?v=5.0"></script>
+<script src="js/nearby.js?v=5.1"></script>
+<script src="js/store.js?v=5.1"></script>
+<script src="js/survey.js?v=5.1"></script>
+<script src="js/odigo.js?v=5.1"></script>
+<script src="js/layers.js?v=5.1"></script>
+<script src="js/safety.js?v=5.1"></script>
+<script src="js/files.js?v=5.1"></script>
+<script src="js/nav.js?v=5.1"></script>
 </body>
 </html>

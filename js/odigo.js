@@ -26,7 +26,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = 'v5.0';
+  var APP_VERSION = 'v5.1';
   /* 키는 HTML에 노출되는 공개키 — 두 서비스 모두 허용 도메인(https://ubaldos00-ship-it.github.io)으로 제한됨 */
   var VWORLD_API_KEY = '00EB5BC0-22B4-3B7E-89D1-341699F7CE05';
   var KAKAO_JS_KEY = 'd714e9625ae9e816526288f6cde536a9';
@@ -282,6 +282,7 @@
     db.sites = db.sites.filter(function (s) { return s.id !== siteId; });
     db.visits = db.visits.filter(function (v) { return v.siteId !== siteId; });
     persist();
+    if (window.OdigoStore && OdigoStore.surveyDeleteBySite) OdigoStore.surveyDeleteBySite(siteId).catch(function () {});   /* v5.1 그 핀의 조사표도 */
   }
 
   /* ───────── 지도 ───────── */
@@ -1336,6 +1337,7 @@
         '<button class="btn" data-act="today">' + (ord ? '오늘 방문 빼기' : '＋ 오늘 방문에 추가') + '</button>' +
         '<button class="btn" data-act="visit">✔ 방문 기록(메모)</button>' +
       '</div>' +
+      '<div id="svCard"></div>' +
       (s.division === 'agri' && (s.type === 'livecost' || s.type === 'livestock') ? '<div class="row"><a class="btn full ext-link" href="https://ubaldos00-ship-it.github.io/dudang/" target="_blank" rel="noopener">🐄 두당 열기 (새 창)</a></div>' : '') +
       (s.division === 'agri' && s.type === 'prod' ? '<div class="row"><a class="btn full ext-link" href="https://ubaldos00-ship-it.github.io/home/" target="_blank" rel="noopener">🌾 텐아르 열기 (새 창)</a></div>' : '') +
       '<div class="row"><button class="btn" style="flex:1" data-act="park">🅿 주변 주차장</button><button class="btn" style="flex:1" data-act="crime">🛡 이 지역 범죄 통계</button></div>' +
@@ -1364,7 +1366,7 @@
     on('jibun', function () { startPickJibun(s); });
     on('pinset', function () { openPinSettings(s.division, { focus: styleKey(s.division, s.type) }); });
     on('del', function () {
-      if (!confirm('「' + dispName(s) + '」을(를) 삭제할까요? 방문 기록도 함께 지워집니다.')) return;
+      if (!confirm('「' + dispName(s) + '」을(를) 삭제할까요? 방문 기록과 조사표도 함께 지워집니다.')) return;
       deleteSite(s.id); closeSheet(); toast('삭제했습니다');
     });
     body.querySelectorAll('[data-prod]').forEach(function (b) { b.addEventListener('click', function () { var p = findSite(b.getAttribute('data-prod')); if (p) { openSite(p.id); flyToVisible(p, map.getZoom()); } }); });
@@ -1386,6 +1388,7 @@
       b.addEventListener('click', function () { var k = +b.getAttribute('data-jdel'); if (!confirm((s.jibuns[k] || {}).jibun + ' 필지를 지울까요?')) return; s.jibuns.splice(k, 1); touch(s); persist(); openSite(s.id, { refresh: true }); });
     });
     bindGifts(body, s);
+    if (window.OdigoSurvey) OdigoSurvey.mountCard(body.querySelector('#svCard'), s);   /* v5.1 조사표 상자 */
   }
   function bindGifts(body, s) {
     var gm = body.querySelector('#giftMon');
@@ -1674,11 +1677,28 @@
     if (tempMarker) { tempMarker.remove(); tempMarker = null; }
   }
   function hideResults() { $('searchResults').hidden = true; document.body.classList.remove('sr-open'); }
-  function localSearch(q) {
-    var k = q.toLowerCase();
+  /* v5.1 내 조사구 찾기: 이름·주소·메모·업무·조사구번호·층·농장명·축종·작물·지역 + 연락처 이름 + 전화번호(뒷자리 등 숫자 일부)
+     검색 글자는 기기 안에서만 비교(풀린 메모리 자료) — 평문 색인을 따로 만들지 않음 */
+  function digitsOf(x) { return String(x || '').replace(/\D/g, ''); }
+  function siteText(s) {
+    return [s.name, s.addr, s.memo, siteLabel(s), s.josaguNo, s.kind, s.farmName, s.species, s.crop, floorJosagu(s), s.no ? '#' + s.no : '',
+      s.region ? [s.region.sigungu, s.region.emd, s.region.ri].join(' ') : '',
+      (s.contacts || []).map(function (c) { return [c.name, c.rank, c.relation].join(' '); }).join(' ')].join(' ').toLowerCase();
+  }
+  function localSearch(q, max) {
+    var k = q.toLowerCase().trim(), dq = digitsOf(q), phoneQ = dq.length >= 3 && /^[\d\s\-]+$/.test(q.trim());
     return db.sites.filter(function (s) {
-      return (s.name + ' ' + s.addr + ' ' + (s.memo || '') + ' ' + siteLabel(s) + ' ' + (s.josaguNo || '') + ' ' + (s.kind || '') + ' ' + (s.region ? [s.region.sigungu, s.region.emd, s.region.ri].join(' ') : '')).toLowerCase().indexOf(k) >= 0;
-    }).slice(0, 8);
+      if (siteText(s).indexOf(k) >= 0) return true;
+      if (phoneQ) return (s.contacts || []).some(function (c) { return [c.mobile, c.office, c.home].some(function (t) { return t && digitsOf(t).indexOf(dq) >= 0; }); }) || digitsOf(s.phone).indexOf(dq) >= 0 && !!s.phone;
+      return false;
+    }).slice(0, max || 8);
+  }
+  /* 연락처로 찾은 검색어(전화번호 숫자, 내 연락처 이름)는 카카오 장소 검색으로 보내지 않음 */
+  function privateQuery(q) {
+    var t = q.trim(), d = digitsOf(t);
+    if (d.length >= 3 && /^[\d\s\-]+$/.test(t)) return true;
+    var k = t.toLowerCase();
+    return db.sites.some(function (s) { return (s.contacts || []).some(function (c) { return c.name && c.name.toLowerCase() === k; }); });
   }
   $('searchForm').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -1698,7 +1718,7 @@
       });
     }
     bindMine();
-    kakaoSearch(q).then(function (list) {
+    (privateQuery(q) ? Promise.resolve([]) : kakaoSearch(q)).then(function (list) {
       var h = mineHtml;
       if (list === null) h += '<div class="sr-empty">검색 서비스에 연결하지 못했습니다. 인터넷 연결을 확인하거나 지도를 길게 눌러 위치를 직접 저장하세요.</div>';
       else if (!list.length) h += mine.length ? '' : '<div class="sr-empty">「' + esc(q) + '」 검색 결과가 없습니다.</div>';
@@ -1717,7 +1737,7 @@
   /* v4.5 검색창 옆 🧭: 고른 위치(검색 결과·지도에서 고른 곳)가 있으면 그곳으로, 검색어만 있으면 그 검색어로 도착지 찾기, 둘 다 없으면 길찾기 창 */
   function searchPlaces(q) {
     var mine = localSearch(q).map(function (x) { return { kind: '내 조사구', name: dispName(x), addr: x.addr || '', lat: x.lat, lng: x.lng }; });
-    return kakaoSearch(q).then(function (list) { return mine.concat((list || []).map(function (r) { return { kind: r.kind, name: r.name, addr: r.addr, lat: r.lat, lng: r.lng }; })); }, function () { return mine; });
+    return (privateQuery(q) ? Promise.resolve([]) : kakaoSearch(q)).then(function (list) { return mine.concat((list || []).map(function (r) { return { kind: r.kind, name: r.name, addr: r.addr, lat: r.lat, lng: r.lng }; })); }, function () { return mine; });
   }
   $('btnRoute').addEventListener('click', function () {
     if (!window.OdigoNav) { toast('길찾기 기능을 불러오지 못했습니다'); return; }
@@ -2021,7 +2041,9 @@
     body.querySelector('#bkNo').addEventListener('click', function () { if (navStack.length) sheetBack(); else closeSheet(); });
     body.querySelector('#bkGo').addEventListener('click', function () {
       var pw = pwGet(body, 'bkPw'); if (!pw) return;
-      OdigoStore.exportFile({ sites: db.sites, visits: db.visits, profile: db.profile }, { division: 'all', sites: db.sites.length, visits: db.visits.length }, APP_VERSION, pw).then(function (o) {
+      (OdigoStore.surveyExport ? OdigoStore.surveyExport() : Promise.resolve([])).then(function (sv) {
+        return OdigoStore.exportFile({ sites: db.sites, visits: db.visits, profile: db.profile, surveys: sv }, { division: 'all', sites: db.sites.length, visits: db.visits.length, surveys: sv.length }, APP_VERSION, pw);
+      }).then(function (o) {
         download(o, 'odigo_backup_' + todayStr() + '.json'); toast('백업 파일을 저장했습니다'); closeSheet();
         if (OdigoStore.markBackup) OdigoStore.markBackup();
       }, function () { toast('백업 파일을 만들지 못했습니다'); });
@@ -2037,7 +2059,7 @@
         var pw = body.querySelector('#ipw').value;
         /* 예전(v3.9 이전) 파일은 공통 암호 2026 — 넣은 암호가 틀리면 2026으로도 한 번 시도 */
         OdigoStore.importFile(text, pw).catch(function (e) { if (e && e.code === 'badpw' && pw !== OdigoStore.FILE_PASSWORD) return OdigoStore.importFile(text, OdigoStore.FILE_PASSWORD); throw e; }).then(function (r) {
-          var inc = r.kind === 'legacy' ? OdigoStore.fromLegacy(r.places, todayStr()) : { sites: r.data.sites || [], visits: r.data.visits || [], profile: r.data.profile || null };
+          var inc = r.kind === 'legacy' ? OdigoStore.fromLegacy(r.places, todayStr()) : { sites: r.data.sites || [], visits: r.data.visits || [], profile: r.data.profile || null, surveys: r.data.surveys || [] };
           previewMerge(inc, r.scope);
         }, function (e) {
           toast(e && e.code === 'badpw' ? '암호가 맞지 않거나 파일이 손상되었습니다. 기존 자료는 그대로입니다.' : '어디고 백업 파일이 아닙니다. 기존 자료는 그대로입니다.');
@@ -2061,10 +2083,14 @@
     var vh = {}; db.visits.forEach(function (v) { vh[v.id] = 1; });
     var vadd = inc.visits.filter(function (v) { return v && v.id && !vh[v.id]; }).length;
     var sc = scope && scope.title ? '<p class="x-sum"><b>' + esc(scope.title) + '</b>' + (scope.from ? ' · 보낸 사람 ' + esc(scope.from) : '') + ' · 조사구 ' + (scope.sites || 0) + '곳</p>' : (scope && scope.division === 'all' ? '<p class="x-sum">전체 백업 파일</p>' : '');
-    var body = openSheet('불러올 내용 확인', sc +
+    var svN = (inc.surveys || []).length;
+    var body = openSheet('불러올 내용 확인', sc + (svN ? '<p class="muted" id="mgSv">조사표 ' + svN + '건 확인 중…</p>' : '') +
       '<table class="kv"><tr><th>새 조사구</th><td>' + add + '곳</td></tr><tr><th>더 최신으로 바뀜</th><td>' + newer + '곳</td></tr><tr><th>이미 있음(그대로)</th><td>' + same + '곳' + (fill ? ' <small>(그중 ' + fill + '곳은 빈 연락처·층·조사구를 채움)</small>' : '') + '</td></tr><tr><th>새 방문 기록</th><td>' + vadd + '건</td></tr></table>' +
       '<div class="row"><button class="btn primary" id="mgGo" style="flex:1">합치기</button><button class="btn cancel" id="mgNo">취소</button></div>');
     body.querySelector('#mgNo').addEventListener('click', function () { closeSheet(); toast('취소했습니다. 기존 자료는 그대로입니다.'); });
+    if (svN && OdigoStore.surveyImport) OdigoStore.surveyImport(inc.surveys, true).then(function (r) {
+      var el = body.querySelector('#mgSv'); if (el) el.innerHTML = '조사표: 새로 ' + r.add + '건 · 같음 ' + r.same + '건' + (r.conflict ? ' · <b class="warn-t">내용이 다른 기록 ' + r.conflict + '건 (기존 기록을 그대로 둠)</b>' : '');
+    }, function () { var el = body.querySelector('#mgSv'); if (el) el.textContent = '조사표는 지금 저장소에서 가져올 수 없습니다'; });
     body.querySelector('#mgGo').addEventListener('click', function () {
       /* 열쇠를 잃은 상태에서 백업으로 되살릴 때: 열 수 없는 자료는 보관하고 새 금고에 합침 */
       if (storeStatus === 'keylost' && OdigoStore.isBlocked()) {
@@ -2088,6 +2114,7 @@
       inc.visits.forEach(function (v) { if (v && v.id && !vh[v.id]) db.visits.push(v); });
       if (!db.profile && inc.profile) db.profile = inc.profile;
       persist(); closeSheet(); toast('불러왔습니다 · 새 조사구 ' + add + '곳');
+      if (svN && OdigoStore.surveyImport) OdigoStore.surveyImport(inc.surveys, false).then(function (r) { toast('조사표 새로 ' + r.add + '건' + (r.conflict ? ' · 내용이 다른 ' + r.conflict + '건은 기존 그대로' : '')); }, function () {});
       refillRegions(false);
       if (!db.profile) openProfile(true);
     }
@@ -2146,7 +2173,7 @@
   window.OdigoApp = { search: function (q) { return searchPlaces(q); }, map: map, stopLocate: function () { if (locMode !== 'off' || meMarker) stopAll(); }, openNav: openNav, openSheet: openSheet, closeSheet: closeSheet, toast: toast, regionOf: regionOf,
     ensureKakao: ensureKakao, reverseGeocode: reverseGeocode, showSharedPin: showSharedPin,
     setPinLabels: setPinLabels, mapAppBtns: mapAppBtns, copyBtn: copyBtn, pwBox: pwBox, pwGet: pwGet, dispName: dispName, openAppOrWeb: openAppOrWeb, pinVars: pinVars, openPinSettings: function () { if (db.profile) openPinSettings(); else openProfile(true); },
-    getProfile: function () { return db.profile; },
+    getProfile: function () { return db.profile; }, openSite: function (id, o) { openSite(id, o); },
     fitSites: fitSites, previewMerge: previewMerge, exportBackup: function () { exportBackup(); },
     /* files.js(공유·엑셀)용 자료 창구 */
     data: {
@@ -2159,6 +2186,7 @@
         db.visits = db.visits.filter(function (v) { return !m[v.siteId]; });
         if (selectedId && m[selectedId]) selectedId = null;
         persist();
+        if (window.OdigoStore && OdigoStore.surveyDeleteBySite) ids.forEach(function (id) { OdigoStore.surveyDeleteBySite(id).catch(function () {}); });
       },
       addMany: function (items) {
         var now = nowIso();

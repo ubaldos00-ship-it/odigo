@@ -1,4 +1,10 @@
-/* 어디고 v5.0 — 저장소를 IndexedDB 하나(odigo_db)로 옮김 (2026-11-26 사용자 요청 「문제점 보완해서 indexdb로 변경」)
+/* 어디고 v5.1 — 조사표 저장소 추가 (odigo_db version 2)
+     surveys : { id, siteId, task, period, formId, formVer, status, rev, at, iv, ct }
+               id = 핀ID|업무|기간 (예: abc|agri/livestock|2026-03) → 같은 핀·업무·기간은 언제나 한 건(두 번 눌러도 중복 없음)
+               siteId·task·period·status 는 목록용(평문, 개인정보 아님), 조사값은 ct(암호문)
+               처음 화면에서는 읽지 않음 → 핀 카드는 그 핀 목록만, 조사표 화면은 한 건만 풀어서 읽음
+     drafts  : { id, at, iv, ct }  저장 안 하고 닫은 입력(조사표 id 와 같은 id) — 다시 열면 이어서
+   어디고 v5.0 — 저장소를 IndexedDB 하나(odigo_db)로 옮김 (2026-11-26 사용자 요청 「문제점 보완해서 indexdb로 변경」)
    ─ 왜 바꾸나 (v4.7까지의 문제)
      ① 키는 IndexedDB(odigo_secure), 자료는 localStorage(odigo_vault_v2) → IndexedDB만 지워지면 자료를 못 엶
      ② localStorage 약 5MB를 텐아르·두당·어디고가 나눠 씀(같은 주소) → 조사표가 쌓이면 저장 실패
@@ -27,7 +33,7 @@
 (function () {
   'use strict';
 
-  var DB2 = 'odigo_db', DB2_VER = 1;
+  var DB2 = 'odigo_db', DB2_VER = 2;
   var STORES = ['sites', 'visits', 'kv'];
   var VAULT_KEY = 'odigo_vault_v2';                    /* v2.7~v4.7 자료 (localStorage) */
   var LEGACY_KEY = 'odigo_places_v1';                  /* v2.3 평문 */
@@ -64,6 +70,8 @@
         if (!d.objectStoreNames.contains('sites')) d.createObjectStore('sites', { keyPath: 'id' });
         if (!d.objectStoreNames.contains('visits')) d.createObjectStore('visits', { keyPath: 'id' }).createIndex('siteId', 'siteId', { unique: false });
         if (!d.objectStoreNames.contains('orphans')) d.createObjectStore('orphans', { autoIncrement: true });
+        if (!d.objectStoreNames.contains('surveys')) { var sv = d.createObjectStore('surveys', { keyPath: 'id' }); sv.createIndex('siteId', 'siteId', { unique: false }); sv.createIndex('task', 'task', { unique: false }); }
+        if (!d.objectStoreNames.contains('drafts')) d.createObjectStore('drafts', { keyPath: 'id' });
       };
       r.onsuccess = function () {
         var d = r.result;
@@ -254,6 +262,7 @@
   }
   function onPing(m) {
     if (!m || m.tab === TAB || MODE !== 'idb' || !KEY) return;
+    if (m.surveys) { try { if (api.onSurveyRemote) api.onSurveyRemote(m.surveys); } catch (e) {} return; }
     var list = [];
     STORES.forEach(function (st) { ((m.changed || {})[st] || []).forEach(function (id) { list.push({ st: st, id: id }); }); });
     if (!list.length) return;
@@ -498,8 +507,8 @@
       MODE = 'idb';
     }
     return openDB2().then(function (db2) {
-      var tx = db2.transaction(['meta', 'orphans'].concat(STORES), 'readwrite'), stamp = kstNow();
-      STORES.forEach(function (st) {
+      var tx = db2.transaction(['meta', 'orphans', 'surveys', 'drafts'].concat(STORES), 'readwrite'), stamp = kstNow();
+      STORES.concat(['surveys', 'drafts']).forEach(function (st) {
         var os = tx.objectStore(st), g = os.getAll();
         g.onsuccess = function () { (g.result || []).forEach(function (r) { tx.objectStore('orphans').add({ store: st, at: stamp, rec: r }); }); os.clear(); };
       });
@@ -511,6 +520,85 @@
       return newKey();
     }).then(function () { blocked = false; return emptyData(); });
   }
+
+  /* ───────── 조사표 (v5.1) ─────────
+     예전 방식(MODE legacy)·열쇠 없음에서는 쓰지 않음(reject 'nosurvey') */
+  function svReady() { return MODE === 'idb' && KEY && !blocked ? openDB2() : Promise.reject(err('nosurvey')); }
+  function svMeta(r) { return { id: r.id, siteId: r.siteId, task: r.task, period: r.period, formId: r.formId, formVer: r.formVer, status: r.status, rev: r.rev || 0, at: r.at }; }
+  function surveyId(siteId, task, period) { return String(siteId) + '|' + task + '|' + period; }
+  /* 한 핀의 조사표 목록 (풀지 않음) */
+  function surveyList(siteId) {
+    return svReady().then(function (db2) { return rq(db2.transaction('surveys', 'readonly').objectStore('surveys').index('siteId').getAll(String(siteId))); })
+      .then(function (a) { return (a || []).map(svMeta); });
+  }
+  /* 여러 핀(또는 전체)의 조사표 상태 — 목록 화면용, 풀지 않음 */
+  function surveyIndex() {
+    return svReady().then(function (db2) { return rq(db2.transaction('surveys', 'readonly').objectStore('surveys').getAll()); })
+      .then(function (a) { return (a || []).map(svMeta); });
+  }
+  /* 한 건 열기: { meta, body } 또는 null */
+  function surveyGet(id) {
+    return svReady().then(function (db2) { return rq(db2.transaction('surveys', 'readonly').objectStore('surveys').get(id)); })
+      .then(function (r) { if (!r) return null; return decOne(r).then(function (body) { return { meta: svMeta(r), body: body }; }); });
+  }
+  /* 저장: rev 가 내가 연 때와 같을 때만 씀 (다른 탭·재시도로 최근 변경을 덮지 않음). 반환 = 새 meta */
+  function surveyPut(meta, body, expectRev) {
+    var id = surveyId(meta.siteId, meta.task, meta.period);
+    return svReady().then(function () { return encOne(body); }).then(function (e) {
+      return openDB2().then(function (db2) {
+        var tx = db2.transaction(['surveys', 'drafts'], 'readwrite'), os = tx.objectStore('surveys'), out = null, conflict = false;
+        var g = os.get(id);
+        g.onsuccess = function () {
+          var ex = g.result, cur = ex ? (ex.rev || 0) : 0;
+          if (cur !== (expectRev || 0)) { conflict = true; return; }
+          out = { id: id, siteId: String(meta.siteId), task: meta.task, period: meta.period, formId: meta.formId, formVer: meta.formVer, status: meta.status, rev: cur + 1, at: Date.now(), iv: e.iv, ct: e.ct };
+          os.put(out);
+          tx.objectStore('drafts').delete(id);   /* 저장했으면 「저장 안 한 입력」은 지움 (같은 트랜잭션) */
+        };
+        return txDone(tx).then(function () {
+          if (conflict) throw err('conflict');
+          pingSurvey([id]);
+          return svMeta(out);
+        });
+      });
+    });
+  }
+  function surveyDeleteBySite(siteId) {
+    return svReady().then(function (db2) {
+      var tx = db2.transaction(['surveys', 'drafts'], 'readwrite'), os = tx.objectStore('surveys'), ids = [];
+      var g = os.index('siteId').getAllKeys(String(siteId));
+      g.onsuccess = function () { (g.result || []).forEach(function (k) { ids.push(k); os.delete(k); tx.objectStore('drafts').delete(k); }); };
+      return txDone(tx).then(function () { if (ids.length) pingSurvey(ids); return ids.length; });
+    }).catch(function (e) { if (e && e.code === 'nosurvey') return 0; throw e; });
+  }
+  /* 백업용: 조사표 전부(또는 핀 목록) 풀어서 */
+  function surveyExport(siteIds) {
+    var want = null; if (siteIds) { want = {}; siteIds.forEach(function (x) { want[String(x)] = 1; }); }
+    return surveyIndex().then(function (list) {
+      list = list.filter(function (m) { return !want || want[m.siteId]; });
+      return Promise.all(list.map(function (m) { return surveyGet(m.id); }));
+    }).then(function (a) { return a.filter(Boolean).map(function (x) { var m = x.meta; return { id: m.id, siteId: m.siteId, task: m.task, period: m.period, formId: m.formId, formVer: m.formVer, status: m.status, at: m.at, body: x.body }; }); },
+      function (e) { if (e && e.code === 'nosurvey') return []; throw e; });
+  }
+  /* 가져오기: 없는 기록은 추가, 같은 내용은 건너뜀, 내용이 다르면 「충돌」로 세고 기존 기록 그대로 둠. dry=true 면 세기만 */
+  function surveyImport(list, dry) {
+    var res = { add: 0, same: 0, conflict: 0, conflicts: [] };
+    return Promise.all((list || []).map(function (x) {
+      if (!x || !x.siteId || !x.task || !x.period || !x.body) return null;
+      var id = surveyId(x.siteId, x.task, x.period);
+      return surveyGet(id).then(function (have) {
+        if (!have) { res.add++; if (!dry) return surveyPut({ siteId: x.siteId, task: x.task, period: x.period, formId: x.formId, formVer: x.formVer, status: x.status }, x.body, 0); return null; }
+        if (JSON.stringify(have.body) === JSON.stringify(x.body) && have.meta.status === x.status) { res.same++; return null; }
+        res.conflict++; res.conflicts.push({ id: id, mine: have.meta.status, theirs: x.status, theirsAt: x.at });
+        return null;
+      });
+    })).then(function () { return res; });
+  }
+  /* 저장 안 하고 닫은 입력 */
+  function draftPut(id, body) { return svReady().then(function () { return encOne(body); }).then(function (e) { return openDB2().then(function (db2) { var tx = db2.transaction('drafts', 'readwrite'); tx.objectStore('drafts').put({ id: id, at: Date.now(), iv: e.iv, ct: e.ct }); return txDone(tx); }); }); }
+  function draftGet(id) { return svReady().then(function (db2) { return rq(db2.transaction('drafts', 'readonly').objectStore('drafts').get(id)); }).then(function (r) { return r ? decOne(r).then(function (b) { return { at: r.at, body: b }; }) : null; }); }
+  function draftDel(id) { return svReady().then(function (db2) { var tx = db2.transaction('drafts', 'readwrite'); tx.objectStore('drafts').delete(id); return txDone(tx); }).catch(function () {}); }
+  function pingSurvey(ids) { var m = { tab: TAB, at: Date.now(), surveys: ids }; if (bc) { try { bc.postMessage(m); } catch (e) {} } else { try { rawSet(PING_KEY, JSON.stringify(m)); } catch (e) {} } }
 
   /* 백업 알림용 */
   function markBackup() { return metaPut('backup', { at: Date.now() }).catch(function () {}); }
@@ -549,6 +637,8 @@
     isBlocked: function () { return blocked; },
     mode: function () { return MODE; },
     storageInfo: storageInfo, markBackup: markBackup, backupInfo: backupInfo,
+    surveyId: surveyId, surveyList: surveyList, surveyIndex: surveyIndex, surveyGet: surveyGet, surveyPut: surveyPut, surveyDeleteBySite: surveyDeleteBySite,
+    surveyExport: surveyExport, surveyImport: surveyImport, draftPut: draftPut, draftGet: draftGet, draftDel: draftDel,
     fromLegacy: fromLegacy, exportFile: exportFile, importFile: importFile, uid: uid
     /* onError(e), onRemote([{store,id,value}], conflict) 는 화면(odigo.js)에서 붙임 */
   };
